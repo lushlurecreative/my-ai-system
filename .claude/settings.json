@@ -1,0 +1,20 @@
+{
+  "model": "sonnet",
+  "permissions": {
+    "deny": [
+      "Edit(.claude/**)", "Write(.claude/**)", "MultiEdit(.claude/**)",
+      "Edit(CLAUDE.md)", "Write(CLAUDE.md)", "Edit(PROTECTED.md)", "Write(PROTECTED.md)",
+      "Bash(git push --force*)", "Bash(git push -f*)", "Bash(rm -rf*)", "Bash(git reset --hard*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.mjs\"", "timeout": 10 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/answer-first.mjs\"", "timeout": 5 }] }],
+    "PreToolUse": [
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/scope-guard.mjs\"", "timeout": 10 }] },
+      { "matcher": "Bash|mcp__.*__send_message|mcp__.*__query_database|mcp__.*__execute_sql|mcp__.*__apply_migration|mcp__.*__run_sql", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/protected-paths.mjs\"", "timeout": 15 }] },
+      { "matcher": "Agent|Task", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent-model-floor.mjs\"", "timeout": 10 }] }
+    ],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/done-check.mjs\"", "timeout": 10 }] }]
+  }
+}

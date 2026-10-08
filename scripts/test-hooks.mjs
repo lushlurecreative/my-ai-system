@@ -94,4 +94,19 @@ t('update: project PROTECTED.md kept', /a\.ts/.test(fs.readFileSync(path.join(U,
 t('update: tells the owner what needs attention', /Needs attention/.test(out), true);
 fs.writeFileSync(path.join(U, 'docs/TASK.md'), '# Current task\n\nStatus: ACTIVE\n\nTask:\n- x\n'); const out2 = execSync(`bash "${SRC}/install.sh" "${U}"`, { encoding: 'utf8' }); t('update: active old-format task is not overwritten, owner is told', /Status: ACTIVE/.test(fs.readFileSync(path.join(U, 'docs/TASK.md'), 'utf8')) && /active task in the old format/.test(out2), true);
 fs.rmSync(U, { recursive: true, force: true });
+// ---- additions: read-only library scan ----
+const L = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-lib-')); fs.mkdirSync(path.join(L, 'Skills/ww-first-impression'), { recursive: true }); fs.mkdirSync(path.join(L, 'Skills/seo-thing'), { recursive: true }); fs.mkdirSync(path.join(L, 'Shared/Repos/somerepo/.git'), { recursive: true }); fs.mkdirSync(path.join(L, 'agents'), { recursive: true });
+fs.writeFileSync(path.join(L, 'Skills/ww-first-impression/SKILL.md'), '---\nname: ww-first-impression\ndescription: a very long and detailed first impression skill\n---\n' + 'detail '.repeat(400)); fs.writeFileSync(path.join(L, 'Skills/seo-thing/SKILL.md'), '---\nname: seo-thing\ndescription: seo helper\n---\nx');
+fs.writeFileSync(path.join(L, 'Shared/Repos/somerepo/.git/config'), '[remote "origin"]\n\turl = https://user:SECRETTOKEN123@github.com/a/b.git\n'); fs.writeFileSync(path.join(L, 'agents/helper.md'), '---\nname: helper\ndescription: does things\ntools: Read, Grep\nmodel: haiku\n---\nbody');
+fs.writeFileSync(path.join(L, '.mcp.json'), JSON.stringify({ mcpServers: { posthog: { command: 'npx', env: { API_KEY: 'sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ' } } } })); fs.writeFileSync(path.join(L, 'Inventory.md'), '# Inventory\n- tool a\nkey sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345\n');
+const hashDir = (d) => walk(d).sort().map((f) => f + fs.statSync(f).size + fs.statSync(f).mtimeMs).join('|'); const before = hashDir(L);
+const rep = path.join(L, '..', 'ais-lib-report.md'); const so = execSync(`node "${SRC}/scripts/scan-library.mjs" "${L}" --out "${rep}"`, { encoding: 'utf8' }); const report = fs.readFileSync(rep, 'utf8');
+t('scan: finds skills, agent, repo, mcp config', /2 skills, 1 agents, 0 plugins, 1 mcp configs, 1 repos/.test(so), true);
+t('scan: library is unchanged afterwards', hashDir(L), before);
+t('scan: flags the fuller library skill against the master', /LIBRARY FULLER/.test(report), true);
+t('scan: MCP server names listed, secret values never', /posthog/.test(report) && !/ABCDEFGHIJKLMNOP/.test(report), true);
+t('scan: git remote credentials stripped', /github\.com\/a\/b\.git/.test(report) && !/SECRETTOKEN123/.test(report), true);
+t('scan: secret-looking inventory line redacted', /line redacted/.test(report) && /tool a/.test(report), true);
+let missing = ''; try { execSync(`node "${SRC}/scripts/scan-library.mjs" "${L}/nope" --out "${rep}"`, { stdio: 'pipe' }); } catch (e) { missing = String(e.status); } t('scan: missing library -> clean failure (exit 2)', missing, '2');
+fs.rmSync(L, { recursive: true, force: true }); fs.rmSync(rep, { force: true });
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

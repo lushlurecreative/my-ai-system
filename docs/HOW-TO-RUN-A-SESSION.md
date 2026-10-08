@@ -9,6 +9,7 @@
 7. **To reorder priorities:** say "move X to the top of NEXT.md".
 
 8. **Installing a tool or adding an agent:** Claude tells you what and why. You answer in chat: "yes, install posthog" or "yes, add agent marketing". Nothing happens without those words.
+9. **Syncing your global tools library:** this needs a session on your own computer, because cloud sessions cannot see your files. Open Claude (the desktop app) in the my-ai-system folder and say "sync the global library." It reads the folder and changes nothing in it.
 
 What never changes without you: the protected files, spending money, credentials, deleting data, CLAUDE.md, the hooks.
 

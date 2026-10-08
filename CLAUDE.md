@@ -55,6 +55,8 @@ If Shaun's message is not a task, answer it, give your view, and stop. Do not ed
 
 Anything any project would need belongs in the master system (my-ai-system), with project details as parameters in `docs/PROJECT.md`. A project folder holds only that project's data: its protected list, facts, sub-goals, next list, toolbox rows and agent rows. The rules, hooks, agents and lens skills inside a project are copies refreshed from the master, so never edit them there. When work in a project produces something generic, tell Shaun it should be promoted to the master.
 
+The master may read and promote from Shaun's global tools library (path in `.claude/system.json`; procedure in `docs/LIBRARY-SYNC.md`) and may never delete or move anything in it. A project's own tools folder is that project's data: the master never edits it. Cloud sessions cannot see his computer, so library work needs a session on his computer; say so in one line and use the committed scan report meanwhile.
+
 ## Talking to Shaun
 
 Answer the question he asked in the first sentence. No recap, no apology, no offer before the answer. Short status. He reads results, not narration.

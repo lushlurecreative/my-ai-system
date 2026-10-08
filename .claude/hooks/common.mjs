@@ -2,13 +2,16 @@ import fs from 'node:fs'; import path from 'node:path';
 export const deny = (reason) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
 export function rel(root, p) { p = String(p || ''); if (path.isAbsolute(p)) p = path.relative(root, p); return p.replace(/^\.\//, ''); }
 export function readTask(root) {
-  let t = ''; try { t = fs.readFileSync(path.join(root, 'docs/TASK.md'), 'utf8'); } catch { return { status: 'NONE', type: 'BUILD', allowed: [], tools: null, evidence: 0, verdict: '' }; }
+  let t = ''; try { t = fs.readFileSync(path.join(root, 'docs/TASK.md'), 'utf8'); } catch { return { status: 'NONE', type: 'BUILD', allowed: [], tools: null, evidence: 0, verdict: '', doneTotal: 0, doneTicked: 0, ledgerTotal: 0, ledgerTicked: 0 }; }
   const status = ((t.match(/^Status:\s*(\w+)/m) || [])[1] || 'NONE').toUpperCase();
   const sect = (name) => { const m = t.match(new RegExp(`^${name}:\\s*\\n((?:[ \\t]*-.*\\n?)*)`, 'm')); return m ? m[1].split('\n').map((l) => l.replace(/^\s*-\s*/, '').trim()).filter((l) => l && !l.startsWith('(')) : []; };
   const type = ((t.match(/^Type:\s*(\w+)/m) || [])[1] || 'BUILD').toUpperCase();
   // tools === null means the "Tools needed:" list is missing or still the template placeholder; ['none'] means the task needs no tool beyond the built-ins.
   const hasTools = /^Tools needed:/m.test(t); const toolLines = sect('Tools needed').map((l) => l.split(/\s*[:(]/)[0].trim()).filter(Boolean);
-  return { status, type, allowed: sect('Allowed paths'), tools: hasTools && toolLines.length ? toolLines : null, evidence: sect('Evidence').length, verdict: (sect('Reviewer verdict')[0] || '') };
+  // Checkbox sections: a line counts as ticked only when it starts with [x].
+  const boxes = (name) => { const l = sect(name); return { total: l.length, ticked: l.filter((x) => /^\[x\]/i.test(x)).length }; };
+  const dm = boxes('Done means'); const sl = boxes('Scope ledger');
+  return { status, type, doneTotal: dm.total, doneTicked: dm.ticked, ledgerTotal: sl.total, ledgerTicked: sl.ticked, allowed: sect('Allowed paths'), tools: hasTools && toolLines.length ? toolLines : null, evidence: sect('Evidence').length, verdict: (sect('Reviewer verdict')[0] || '') };
 }
 // docs/TOOLBOX.md rows: | Job | Tool | Status | Check | Last verified |  ->  { 'tool name (lowercase)': 'working' | 'known' | ... }
 export function readToolbox(root) {

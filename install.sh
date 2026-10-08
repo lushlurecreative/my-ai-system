@@ -13,7 +13,7 @@ cp "$SRC/.claude/settings.json" "$DST/.claude/settings.json"; cp "$SRC/CLAUDE.md
 NOTES=""
 # docs/TASK.md: replace only when idle and in the old format
 if [ -f "$DST/docs/TASK.md" ]; then
-  if ! grep -q "^Tools needed:" "$DST/docs/TASK.md"; then
+  if ! grep -q "^Scope ledger" "$DST/docs/TASK.md"; then
     if grep -qE "^Status:[[:space:]]*(NONE|DONE)" "$DST/docs/TASK.md"; then cp "$SRC/docs/TASK.md" "$DST/docs/TASK.md"; NOTES="$NOTES\n- docs/TASK.md was idle and in the old format: replaced with the new template."; else NOTES="$NOTES\n- docs/TASK.md has an active task in the old format. Add 'Type:' and 'Tools needed:' lines to it by hand."; fi
   fi
 else cp "$SRC/docs/TASK.md" "$DST/docs/TASK.md"; fi

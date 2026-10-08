@@ -11,7 +11,7 @@ const edit = (p) => run('scope-guard.mjs', { tool_name: 'Edit', tool_input: { fi
 const bash = (c) => run('scope-guard.mjs', { tool_name: 'Bash', tool_input: { command: c } });
 const pp = (name, ti) => run('protected-paths.mjs', { tool_name: name, tool_input: ti });
 const stop = (msg) => run('done-check.mjs', { last_assistant_message: msg });
-const task = (status, allowed, evidence, verdict, o = {}) => { const tools = o.tools === undefined ? ['none'] : o.tools; fs.writeFileSync(path.join(T, 'docs/TASK.md'), `# Current task\n\nStatus: ${status}\nType: ${o.type || 'BUILD'}\n\nTask:\n- x\n\nAllowed paths:\n${allowed.map((a) => `- ${a}`).join('\n')}\n\n${tools === null ? '' : `Tools needed:\n${tools.map((x) => `- ${x}`).join('\n')}\n\n`}Done means:\n- y\n\nEvidence:\n${evidence.map((e) => `- ${e}`).join('\n')}\n\nReviewer verdict:\n- ${verdict}\n`); };
+const task = (status, allowed, evidence, verdict, o = {}) => { const tools = o.tools === undefined ? ['none'] : o.tools; fs.writeFileSync(path.join(T, 'docs/TASK.md'), `# Current task\n\nStatus: ${status}\nType: ${o.type || 'BUILD'}\n\nTask:\n- x\n\nAllowed paths:\n${allowed.map((a) => `- ${a}`).join('\n')}\n\n${tools === null ? '' : `Tools needed:\n${tools.map((x) => `- ${x}`).join('\n')}\n\n`}Done means:\n${(o.done || ['[x] y']).map((x) => `- ${x}`).join('\n')}\n\n${o.ledger ? `Scope ledger:\n${o.ledger.map((x) => `- ${x}`).join('\n')}\n\n` : ''}\nEvidence:\n${evidence.map((e) => `- ${e}`).join('\n')}\n\nReviewer verdict:\n- ${verdict}\n`); };
 // no task
 task('NONE', [], [], ''); t('edit with no task -> deny', decision(edit('src/pages/Home.tsx')), 'deny');
 t('edit docs/NEXT.md with no task -> allow', decision(edit('docs/NEXT.md')), 'allow');
@@ -109,4 +109,16 @@ t('scan: git remote credentials stripped', /github\.com\/a\/b\.git/.test(report)
 t('scan: secret-looking inventory line redacted', /line redacted/.test(report) && /tool a/.test(report), true);
 let missing = ''; try { execSync(`node "${SRC}/scripts/scan-library.mjs" "${L}/nope" --out "${rep}"`, { stdio: 'pipe' }); } catch (e) { missing = String(e.status); } t('scan: missing library -> clean failure (exit 2)', missing, '2');
 fs.rmSync(L, { recursive: true, force: true }); fs.rmSync(rep, { force: true });
+// ---- additions: checkbox done-gate, analysis scope ledger, permission-seeking stop, persistence ----
+const stopS = (msg, sid) => run('done-check.mjs', { session_id: sid, last_assistant_message: msg });
+const NEXT3 = "Done. Next, in order, I'd do A, B or C, because A blocks sign-ups. Which one?";
+task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] page loads', '[ ] mobile checked'] }); t('done claimed with an unticked Done means line -> block', decision(stopS('Done.', 'cb1')), 'block');
+task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['plain line with no checkbox'] }); t('Done means line without a tick -> block', decision(stopS('Done.', 'cb2')), 'block');
+task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] page loads', '[x] mobile checked'] }); t('all Done means ticked + evidence + PASS + next-3 -> allow', decision(stopS(NEXT3, 'cb3')), 'allow');
+task('DONE', ['docs/**'], ['screenshot docs/notes/x.png'], 'PASS', { type: 'ANALYSIS', done: ['[x] findings written'] }); t('ANALYSIS done with no Scope ledger -> block', decision(stopS('Done.', 'sl1')), 'block');
+task('DONE', ['docs/**'], ['screenshot docs/notes/x.png'], 'PASS', { type: 'ANALYSIS', done: ['[x] findings written'], ledger: ['[x] homepage', '[ ] glossary page', '[ ] extension'] }); t('ANALYSIS done with 2 ledger items open -> block', decision(stopS('Done.', 'sl2')), 'block');
+task('DONE', ['docs/**'], ['screenshot docs/notes/x.png'], 'PASS', { type: 'ANALYSIS', done: ['[x] findings written'], ledger: ['[x] homepage', '[x] glossary page', '[x] extension, out of scope: store page will not load, checked repo instead'] }); t('ANALYSIS with full ledger (one out of scope with reason) -> allow', decision(stopS(NEXT3, 'sl3')), 'allow');
+task('ACTIVE', ['src/pages/**'], [], ''); t('mid-task "Want me to fix it?" -> block', decision(stopS('The header is misaligned on mobile. Want me to fix it?', 'pm1')), 'block'); t('mid-task "Shall I proceed?" -> block', decision(stopS('I found two ways to do this. Shall I proceed?', 'pm2')), 'block');
+t('mid-task real decision question -> allow', decision(stopS('Should the price show monthly or yearly?', 'pm3')), 'allow'); t('mid-task named blocker -> allow', decision(stopS('Blocked on a login only you have: the PostHog dashboard. I tried the API key and the export link; both need your account.', 'pm4')), 'allow');
+task('NONE', [], [], ''); t('no active task: an offer is not blocked by this guard', decision(stopS('That is the plan. Want me to draft it?', 'pm5')), 'allow');
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

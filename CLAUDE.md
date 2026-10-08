@@ -5,12 +5,16 @@ Owner: Shaun. He is not an engineer. He gives the task and the decisions; Claude
 ## One task, then stop
 
 1. **Start.** The session hook shows `docs/TASK.md` and the top of `docs/NEXT.md`. Nothing else authorizes work: not chat history, not memory plugins, not old handoffs.
-2. **Take the task Shaun gives.** Write it into TASK.md: one sentence, `Type: BUILD` or `ANALYSIS`, the 1-3 questions that would change the work, the allowed paths, `Tools needed` (see Tools), and "done means" in checkable terms. **Ask the questions and wait.** Then set `Status: ACTIVE`.
+2. **Take the task Shaun gives.** Write it into TASK.md: one sentence, `Type: BUILD` or `ANALYSIS`, the 1-3 questions that would change the work, the allowed paths, `Tools needed` (see Tools), and "done means" as checkbox lines (`[ ] statement`). **Ask the questions and wait.** Then set `Status: ACTIVE`.
 3. **Do only that task.** A hook blocks edits outside the allowed paths. Anything else you notice goes as one line under "Parked ideas" in NEXT.md. Never fix it. Never start it.
-4. **Prove it, then get it judged.** Put evidence in TASK.md (test output, screenshot path, the live URL and what it showed). Launch the `reviewer` agent to grade the task against "Done means". Only when it returns PASS, set `Status: DONE`. A hook blocks "done" without evidence and without the reviewer, and blocks pushing to `main` until then.
+4. **Prove it, then get it judged.** Put evidence in TASK.md (test output, screenshot path, the live URL and what it showed). Launch the `reviewer` agent to grade the task against "Done means". Tick each "Done means" line `[x]` only after verifying it. Only when every line is ticked and the reviewer returns PASS, set `Status: DONE`. A hook blocks "done" without evidence and without the reviewer, and blocks pushing to `main` until then.
 5. **Stop.** With autopilot off (`.claude/system.json`): end with "Done. Next, in order, I'd do A, B or C, because …. Which one?" from NEXT.md, then stop. With autopilot on: move the top NEXT.md item into TASK.md and begin it as a new task from step 2.
 
-A turn ends only in: a question Shaun must answer · done with evidence and reviewer PASS · a named blocker (login, credential, payment, a protected file, a business decision) · Shaun said stop. Never end by announcing what you are about to do.
+A turn ends only in: a question only Shaun can answer · done with every line ticked, evidence and reviewer PASS · a named blocker · Shaun said stop. Never end by announcing what you are about to do, and never end mid-task by asking permission to continue.
+
+## Persistence
+
+When a task hits a problem, research it, investigate it, find a solution and implement it. Do not stop at the first obstacle. These are not blockers: tool choice, debugging approach, prioritization, reading code, running tests, choosing among approaches, a command that failed, a page that would not load. Try at least two different approaches before calling anything blocked, and say what you tried. Real blockers: a login or credential only Shaun has, spending money, a protected file, a business decision, information that cannot be discovered. A hook blocks "want me to…?" endings while a task is active.
 
 ## Hard blocks (hooks deny these; no prompt, no exception)
 
@@ -20,7 +24,7 @@ A turn ends only in: a question Shaun must answer · done with evidence and revi
 - Installing software, plugins or MCP servers without Shaun typing "yes, install <name>" in chat, and adding or changing an agent without "yes, add agent <name>". A hook records his approval; Claude cannot.
 - Spending money, credentials, deleting data: Shaun's actions only.
 
-If a task truly needs a protected file, say in one sentence: "This needs `<path>`; unlock it with `.claude/override.txt` → `allow: <path>`." Then wait. Never work around a block.
+Before asking Shaun to unlock a protected file, show a reproduction that ran this turn proving the change is needed, and say why existing tests, including frozen ones, do not already cover the behavior. Then say in one sentence: "This needs `<path>`; unlock it with `.claude/override.txt` → `allow: <path>`." Then wait. Never work around a block.
 
 ## Evidence
 
@@ -32,7 +36,7 @@ The project goal is in `docs/PROJECT.md`. It is context, never an assignment: Cl
 
 ## Analysis sessions
 
-When Shaun asks why something is not working, or asks Claude to look at something, set `Type: ANALYSIS`. Analysis changes only `docs/`; a hook enforces it. The output is findings in `docs/NEXT.md`, each with: evidence, confidence (`measured`, `observed` or `opinion`), the sub-goal it blocks, and size S/M/L. Opinion never outranks measured or observed. Analysis updates the numbers in `docs/SUBGOALS.md`; that table is the scoreboard. Advice from another AI or a person is an input: check it against the live site or the data, or log it as "opinion, untested". After fixes ship, a later analysis re-checks the number.
+When Shaun asks why something is not working, or asks Claude to look at something, set `Type: ANALYSIS`. Analysis changes only `docs/`; a hook enforces it. An analysis starts with a `Scope ledger` in TASK.md listing every page, file or area in scope as `[ ]` lines; a hook blocks "done" until each is covered and ticked with evidence, or ticked as "out of scope: reason". The output is findings in `docs/NEXT.md`, each with: evidence, confidence (`measured`, `observed` or `opinion`), intent (`confirmed` or `unconfirmed`), the sub-goal it blocks, and size S/M/L. A defect that depends on what the product is supposed to do stays `unconfirmed`, and unranked, until Shaun confirms the intent. Opinion never outranks measured or observed. Analysis updates the numbers in `docs/SUBGOALS.md`; that table is the scoreboard. Advice from another AI or a person is an input: check it against the live site or the data, or log it as "opinion, untested". After fixes ship, a later analysis re-checks the number.
 
 ## Tools
 

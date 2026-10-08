@@ -14,6 +14,6 @@ Read `docs/HOW-TO-RUN-A-SESSION.md`. That is the only page a person needs.
 - The guards are tested with synthetic inputs, not yet in real sessions. A real-session scenario suite (including "do task A, then also fix B") is not built.
 - Shell commands can write files outside a task's allowed paths. The guard checks shell writes only for protected files and the rules. The reviewer's check of what changed is the backstop.
 - "Working" statuses in the toolbox are written by Claude after running the check. A script that computes them from the check's result is not built.
-- Discussion mode (answer, don't pivot to building) is a written rule only.
+- Discussion mode (answer, don't pivot to building) is a written rule only. The permission-seeking guard applies only while a task is ACTIVE.
 - Autopilot has no automatic trust score yet; the criteria are in the how-to sheet.
 - The tool and agent discovery process is written down but has not been run end to end.

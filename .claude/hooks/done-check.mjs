@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // Stop hook. (1) Ends by announcing work -> block (max 2 in a row per reason). (2) Claims done but TASK.md lacks Evidence or Reviewer PASS, or the reviewer agent never ran this session -> block once.
-// (3) Autopilot off and TASK is DONE but no "which one?" handback -> block once. Fails open.
+// (1b) Asks permission to continue mid-task -> block. (1c) Claims done with unticked Done means, or an ANALYSIS with an open Scope ledger -> block. (3) Autopilot off and TASK is DONE but no "which one?" handback -> block once. Fails open.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { readTask, system } from './common.mjs';
 const MAX = 2;
 const ANNOUNCE = /(?<!\b(?:whether|if) )\b(?:I'll|I will|I'm going to|I am going to|I'm about to|let me)\s+(?:now\s+|go ahead and\s+)?(?:dig|push|get started|check|verify|run|do|start|begin|fix|deploy|test|look|investigate|update|write|implement|continue)\b|\b(?:continuing|proceeding|moving on)\b[^.?!]{0,60}\b(?:now|next)\b|\bnow (?:I'll|let me|checking|running|verifying)\b/i;
 const HANDOFF = /\?\s*$|\bblocked (?:on|by)\b|\b(?:once|after) you\b|\bwaiting (?:on|for)\b|\byour call\b|\bwhich one\b|\bNext, in order\b|\bstopp(?:ed|ing) (?:as|because) you\b/i;
+// Mid-task, asking permission to continue is not a valid stop. Genuine decisions ("should the price be monthly or yearly?") are not matched.
+const PERMISSION = /\b(?:want me to|would you like me to|do you want me to|shall I|should I (?:go ahead|proceed|continue|start|begin|fix|implement|run|check|build|do)|let me know if you(?:'d| would) like me|say go|waiting on your (?:go|ok|approval|permission))\b/i;
 const CLAIM = /\b(?:task (?:is )?(?:done|complete)|all done|is (?:now )?fixed|fixed\.|completed\.|finished\.|done\.)/i;
 export function reviewerRan(transcriptPath) {
   try { return fs.readFileSync(transcriptPath, 'utf8').split('\n').some((l) => { try { const d = JSON.parse(l); return d.type === 'assistant' && Array.isArray(d.message?.content) && d.message.content.some((b) => b.type === 'tool_use' && /^(Agent|Task)$/.test(b.name) && /reviewer/i.test(JSON.stringify(b.input || {}))); } catch { return false; } }); } catch { return true; }
@@ -16,8 +18,13 @@ export function judge(message, root, transcriptPath) {
   const spoken = last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ');
   if (!HANDOFF.test(last) && ANNOUNCE.test(spoken)) return `Your reply ends by announcing work ("${spoken.match(ANNOUNCE)[0]}") instead of doing it. Do it now, or end in a valid stop: done with evidence + next-3 question, a question only Shaun can answer, or a named blocker.`;
   const t = readTask(root);
+  if (t.status === 'ACTIVE' && PERMISSION.test(spoken)) return 'You are mid-task and you are asking permission to continue. That is not a valid stop. Research it, investigate, decide, and do the next step. Valid stops: a decision only Shaun can make (give the options and your recommendation), a named blocker with what you tried, or done with evidence.';
   if (CLAIM.test(spoken)) {
     if (t.status !== 'DONE' || t.evidence === 0) return `You said it is done, but docs/TASK.md is ${t.status} with ${t.evidence} evidence lines. Add the evidence (test output, screenshot path, live URL and result) and set Status: DONE, or do not claim done.`;
+    if (t.doneTotal === 0) return 'docs/TASK.md has no "Done means" lines. Write the checkable statements, verify each, tick them, then claim done.';
+    if (t.doneTicked < t.doneTotal) return `${t.doneTotal - t.doneTicked} of ${t.doneTotal} "Done means" lines are not ticked in docs/TASK.md. Verify each one, put "[x]" in front of it with its evidence, then claim done. If part is not finished, finish it. Do not call it done.`;
+    if (t.type === 'ANALYSIS' && t.ledgerTotal === 0) return 'This is an ANALYSIS task but docs/TASK.md has no "Scope ledger". List every page, file or area in scope as "[ ]" lines, cover each, tick it with evidence (or tick it as "out of scope: reason"), then claim done.';
+    if (t.type === 'ANALYSIS' && t.ledgerTicked < t.ledgerTotal) return `${t.ledgerTotal - t.ledgerTicked} of ${t.ledgerTotal} Scope ledger items are not covered. Cover each one and tick it with evidence, or tick it as "out of scope: reason". Do not call the analysis done while any item is open.`;
     if (!/PASS/i.test(t.verdict)) return `TASK.md has no "Reviewer verdict: PASS". Launch the reviewer agent (Agent tool, subagent_type reviewer) to grade the task against "Done means", record its verdict in TASK.md, then finish.`;
     if (transcriptPath && !reviewerRan(transcriptPath)) return 'TASK.md says the reviewer passed, but no reviewer agent ran in this session. Run it now and record the real verdict.';
   }

@@ -17,7 +17,7 @@ A turn ends only in: a question Shaun must answer · done with evidence and revi
 - Every file listed in `PROTECTED.md`.
 - `CLAUDE.md`, `PROTECTED.md`, anything under `.claude/`.
 - Force push; push to `main` before TASK.md is DONE; `rm -rf`, `git reset --hard`, database resets, DROP; destructive SQL through connectors.
-- Installing software, plugins or MCP servers without Shaun typing "yes, install <name>" in chat. A hook records his approval; Claude cannot.
+- Installing software, plugins or MCP servers without Shaun typing "yes, install <name>" in chat, and adding or changing an agent without "yes, add agent <name>". A hook records his approval; Claude cannot.
 - Spending money, credentials, deleting data: Shaun's actions only.
 
 If a task truly needs a protected file, say in one sentence: "This needs `<path>`; unlock it with `.claude/override.txt` → `allow: <path>`." Then wait. Never work around a block.
@@ -47,9 +47,9 @@ When Shaun asks why something is not working, or asks Claude to look at somethin
 
 If Shaun's message is not a task, answer it, give your view, and stop. Do not edit, do not start building, do not end by asking permission to build. If a task is implied, name it in one sentence and wait.
 
-## Models and helpers
+## Agents and helpers
 
-Sonnet for normal work (pinned in settings). `scout` for read-only sweeps (Haiku or Sonnet). `reviewer` grades every task before DONE. Pass each helper a model. Never let two helpers edit the same files. Re-check one of a helper's facts yourself before repeating it.
+`docs/AGENTS.md` maps each job to an agent, with its model and what it may change. Use the listed agent for the job; do not invent helpers. A job gets its own agent only when it differs in tools, permissions, expertise, independence or parallelism; otherwise add a lens to an existing one. Helpers return text and the main session is the only writer. Sonnet is the default; a hook enforces the model and a cap on helper runs per session. Creating or changing an agent needs Shaun's "yes, add agent <name>" in chat. The `reviewer` grades every task before DONE. Re-check one of a helper's facts yourself before repeating it.
 
 ## Talking to Shaun
 

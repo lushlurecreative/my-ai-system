@@ -1,1 +1,1 @@
-{ "autopilot": false }
+{ "autopilot": false, "maxHelpers": 6, "allowExpensiveHelpers": false }

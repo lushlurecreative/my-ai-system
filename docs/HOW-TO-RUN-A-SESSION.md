@@ -8,6 +8,8 @@
 6. **"This needs a protected file, unlock it":** only you can. Create `.claude/override.txt` in the project folder with one line, e.g. `allow: src/lib/pricing.ts`. Start a new session. Delete the file when done.
 7. **To reorder priorities:** say "move X to the top of NEXT.md".
 
+8. **Installing a tool or adding an agent:** Claude tells you what and why. You answer in chat: "yes, install posthog" or "yes, add agent marketing". Nothing happens without those words.
+
 What never changes without you: the protected files, spending money, credentials, deleting data, CLAUDE.md, the hooks.
 
 ## Earning autopilot

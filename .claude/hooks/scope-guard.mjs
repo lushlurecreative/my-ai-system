@@ -8,6 +8,7 @@ const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS)\.md$/, /^docs\/n
 export function checkEdit(root, filePath) {
   const r = rel(root, filePath);
   if (r.startsWith('..')) return deny(`Edits outside the project (${r}) are not allowed.`);
+  const am = r.match(/^\.claude\/agents\/([\w-]+)\.md$/); if (am && readApprovals(root).includes('agent:' + am[1].toLowerCase())) return null;
   if (SELF.includes(r) || SELF_DIRS.some((d) => r.startsWith(d))) return isOverridden(root, r) ? null : deny(`${r} is the system's own rules/hooks. Only Shaun edits these (unlock: .claude/override.txt "allow: ${r}").`);
   const P = lists(root);
   if (P.files.some((f) => r === f || globRe(f).test(r))) return isOverridden(root, r) ? null : deny(`${r} is PROTECTED (PROTECTED.md). Hard block. Tell Shaun in one sentence what change you need; he unlocks with .claude/override.txt "allow: ${r}".`);

@@ -57,4 +57,24 @@ t('shell write to approvals.json -> deny', decision(bash('echo \'[{"name":"left-
 t('edit approvals.json -> deny', decision(edit('.claude/approvals.json')), 'deny');
 fs.writeFileSync(path.join(T, '.claude/approvals.json'), JSON.stringify([{ name: 'oldpkg', ts: Date.now() - 48 * 3600 * 1000 }])); t('expired approval (48h) -> deny', decision(bash('npm install oldpkg')), 'deny');
 fs.rmSync(path.join(T, '.claude/approvals.json'), { force: true }); appr('install: react-ga4, posthog-js'); t('"install: a, b" approves both', decision(bash('npm install posthog-js')), 'allow');
+// ---- additions: agents (model floor, expensive-model block, helper cap, chat approval to add an agent) ----
+const agentTmp = path.join(os.tmpdir(), 'ais-agents-agtest.count'); fs.rmSync(agentTmp, { force: true });
+const agent = (ti) => run('agent-model-floor.mjs', { session_id: 'agtest', tool_name: 'Agent', tool_input: { subagent_type: 'analyst', prompt: 'x', ...ti } });
+const r1 = agent({}); t('helper with no model -> allowed and set to sonnet', decision(r1) === 'allow' && r1?.hookSpecificOutput?.updatedInput?.model === 'sonnet', true);
+t('helper on haiku -> allowed', decision(agent({ model: 'haiku' })), 'allow'); t('helper on fable -> deny', decision(agent({ model: 'fable' })), 'deny'); t('helper on opus -> deny', decision(agent({ model: 'opus' })), 'deny');
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: true })); t('opus allowed when Shaun sets allowExpensiveHelpers', decision(agent({ model: 'opus' })), 'allow');
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false })); fs.rmSync(agentTmp, { force: true });
+for (let i = 0; i < 6; i++) agent({ model: 'sonnet' }); t('7th helper in one session -> deny (cap 6)', decision(agent({ model: 'sonnet' })), 'deny');
+fs.rmSync(agentTmp, { force: true }); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 1 })); agent({ model: 'sonnet' }); t('cap of 1 honored', decision(agent({ model: 'sonnet' })), 'deny');
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false })); fs.rmSync(agentTmp, { force: true });
+fs.rmSync(path.join(T, '.claude/approvals.json'), { force: true });
+const ag = (n) => run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: path.join(T, `.claude/agents/${n}.md`) } });
+t('write a new agent file with no approval -> deny', decision(ag('marketing')), 'deny');
+appr('should we add agent marketing?'); t('a question about adding an agent is not approval', decision(ag('marketing')), 'deny');
+appr('yes, add agent marketing'); t('after "yes, add agent marketing" -> that file allowed', decision(ag('marketing')), 'allow'); t('approval covers only that agent', decision(ag('other')), 'deny');
+t('agent approval does not unlock hooks', decision(edit('.claude/hooks/scope-guard.mjs')), 'deny'); t('agent approval does not unlock CLAUDE.md', decision(edit('CLAUDE.md')), 'deny');
+fs.rmSync(path.join(T, '.claude/approvals.json'), { force: true }); appr('add agent: Tool Scout'); t('"add agent: Tool Scout" -> tool-scout allowed', decision(ag('tool-scout')), 'allow');
+for (const a of ['analyst', 'marketing', 'security', 'design', 'researcher', 'tool-scout', 'tool-verifier', 'reviewer', 'scout']) { const f = path.join(T, `.claude/agents/${a}.md`); const ok = fs.existsSync(f) && /^---\nname: /.test(fs.readFileSync(f, 'utf8')) && /\ntools: /.test(fs.readFileSync(f, 'utf8')) && /\nmodel: (sonnet|haiku)/.test(fs.readFileSync(f, 'utf8')); t(`agent file ${a} valid (name, tools, model)`, ok, true); }
+for (const a of ['analyst', 'marketing', 'security', 'design', 'researcher', 'tool-scout', 'tool-verifier', 'reviewer', 'scout']) { const f = fs.readFileSync(path.join(T, `.claude/agents/${a}.md`), 'utf8'); const tools = (f.match(/\ntools: (.*)/) || [])[1] || ''; t(`agent ${a} has no Write/Edit tool`, /\b(Write|Edit|MultiEdit|NotebookEdit)\b/.test(tools), false); }
+t('AGENTS.md lists every agent file', ['analyst', 'marketing', 'security', 'design', 'researcher', 'tool-scout', 'tool-verifier', 'reviewer', 'scout'].every((a) => new RegExp(`\\| ${a} \\|`).test(fs.readFileSync(path.join(T, 'docs/AGENTS.md'), 'utf8'))), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -7,7 +7,7 @@ const sh = (c) => { try { return execSync(c, { cwd: root, stdio: ['ignore', 'pip
 let input = {}; try { input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch {}
 let auto = false; try { auto = !!JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')).autopilot; } catch {}
 const out = [
-  `my-ai-system session (${input.source || 'startup'}). Autopilot: ${auto ? 'ON (take the top NEXT item after DONE)' : 'OFF (suggest next 3, then stop)'}. Git: ${sh('git rev-parse --abbrev-ref HEAD')} @ ${sh('git rev-parse --short HEAD')}, ${sh('git status --porcelain | wc -l')} uncommitted.`,
+  `my-ai-system ${(() => { try { return fs.readFileSync(path.join(root, '.claude/system-version'), 'utf8').trim(); } catch { return '?'; } })()} session (${input.source || 'startup'}). Autopilot: ${auto ? 'ON (take the top NEXT item after DONE)' : 'OFF (suggest next 3, then stop)'}. Git: ${sh('git rev-parse --abbrev-ref HEAD')} @ ${sh('git rev-parse --short HEAD')}, ${sh('git status --porcelain | wc -l')} uncommitted.`,
   'Rules: one task (docs/TASK.md). Edits outside its Allowed paths are blocked. PROTECTED.md files, CLAUDE.md and .claude/ are hard-blocked. DONE needs Evidence + reviewer PASS. Never end a turn by announcing work.',
   '', '=== docs/PROJECT.md ===', read('docs/PROJECT.md', 12), '', '=== docs/SUBGOALS.md ===', read('docs/SUBGOALS.md', 12), '', '=== docs/TASK.md ===', read('docs/TASK.md'), '', '=== docs/NEXT.md (top) ===', read('docs/NEXT.md', 16),
 ];

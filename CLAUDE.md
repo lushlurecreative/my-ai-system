@@ -32,7 +32,7 @@ The project goal is in `docs/PROJECT.md`. It is context, never an assignment: Cl
 
 ## Analysis sessions
 
-When Shaun asks why something is not working, or asks Claude to look at something, set `Type: ANALYSIS`. Analysis changes only `docs/`; a hook enforces it. The output is findings in `docs/NEXT.md`, each with: evidence, confidence (`measured`, `observed` or `opinion`), the sub-goal it blocks, and size S/M/L. Opinion never outranks measured or observed. Advice from another AI or a person is an input: check it against the live site or the data, or log it as "opinion, untested". After fixes ship, a later analysis re-checks the number.
+When Shaun asks why something is not working, or asks Claude to look at something, set `Type: ANALYSIS`. Analysis changes only `docs/`; a hook enforces it. The output is findings in `docs/NEXT.md`, each with: evidence, confidence (`measured`, `observed` or `opinion`), the sub-goal it blocks, and size S/M/L. Opinion never outranks measured or observed. Analysis updates the numbers in `docs/SUBGOALS.md`; that table is the scoreboard. Advice from another AI or a person is an input: check it against the live site or the data, or log it as "opinion, untested". After fixes ship, a later analysis re-checks the number.
 
 ## Tools
 
@@ -50,6 +50,10 @@ If Shaun's message is not a task, answer it, give your view, and stop. Do not ed
 ## Agents and helpers
 
 `docs/AGENTS.md` maps each job to an agent, with its model and what it may change. Use the listed agent for the job; do not invent helpers. A job gets its own agent only when it differs in tools, permissions, expertise, independence or parallelism; otherwise add a lens to an existing one. Helpers return text and the main session is the only writer. Sonnet is the default; a hook enforces the model and a cap on helper runs per session. Creating or changing an agent needs Shaun's "yes, add agent <name>" in chat. The `reviewer` grades every task before DONE. Re-check one of a helper's facts yourself before repeating it.
+
+## Where things belong
+
+Anything any project would need belongs in the master system (my-ai-system), with project details as parameters in `docs/PROJECT.md`. A project folder holds only that project's data: its protected list, facts, sub-goals, next list, toolbox rows and agent rows. The rules, hooks, agents and lens skills inside a project are copies refreshed from the master, so never edit them there. When work in a project produces something generic, tell Shaun it should be promoted to the master.
 
 ## Talking to Shaun
 

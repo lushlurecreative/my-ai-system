@@ -8,7 +8,7 @@ Claude hands a job to a listed agent. It does not invent helpers on the fly. Age
 
 **Cost:** every agent has a fixed model. A hook sets Sonnet when none is given, blocks Opus and Fable unless `allowExpensiveHelpers` is true in `.claude/system.json`, and stops launching after `maxHelpers` runs in one session (default 6).
 
-**Project-specific tools for an agent:** copy the agent file with a project prefix, for example `ww-analyst.md`, and add the tool names. Updates from the master never overwrite prefixed files.
+**Project-specific tools for an agent:** copy the agent file with a project prefix, for example `myproject-analyst.md`, and add the tool names. Updates from the master never overwrite prefixed files.
 
 | Job | Agent | Model | Changes files? | Status | Check that proves it |
 |---|---|---|---|---|---|

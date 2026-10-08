@@ -7,6 +7,8 @@ The owner keeps a **global library** of downloaded skills, agents, plugins, MCP 
 - Nothing in the global library is deleted or moved. The scan never modifies it.
 - A project's own tools folder is that project's data. A system session never edits it. A project session may read it to propose a promotion, as a finding.
 
+**Layout:** the library's category folders (for example `Claude/Skills`) hold Mac shortcuts (aliases), not copies. The real files are the repos in `Shared/Repos`. The scan reads the repos; it does not follow shortcuts. `Inventory.md` at the library's top is the owner's own list and is the quickest seed.
+
 **Why it needs the owner's computer:** cloud sessions cannot see his files. The sync runs in a session on his computer (Claude Desktop app, or `claude remote-control` in a terminal), opened in the master folder. The result is a report committed to the repo, so every later session in any place can read it.
 
 **Procedure**

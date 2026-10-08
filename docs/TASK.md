@@ -3,6 +3,9 @@
 Status: NONE
 (Status is one of: NONE | ACTIVE | DONE | BLOCKED. One task lives here at a time.)
 
+Type: BUILD
+(BUILD changes the project. ANALYSIS only looks and reports; it may change nothing outside docs/.)
+
 Task:
 - (one sentence: what Shaun asked for)
 
@@ -11,6 +14,10 @@ Questions asked before starting (and Shaun's answers):
 
 Allowed paths:
 - (files or folders this task may touch, e.g. src/pages/Home.tsx or src/components/pricing/**)
+
+Tools needed:
+- none
+(Replace "none" with each tool the task needs, named as in docs/TOOLBOX.md. Each must be "working" there.)
 
 Done means:
 - (checkable statements)

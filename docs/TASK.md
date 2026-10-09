@@ -19,6 +19,9 @@ Tools needed:
 - none
 (Replace "none" with each tool the task needs, named as in docs/TOOLBOX.md. Each must be "working" there.)
 
+Model (advice; Shaun switches with /model; see docs/MODELS.md):
+- Suggested: sonnet | opus | fable. Why: (one line)
+
 Done means:
 - (checkable statements, one per line, written as "[ ] statement". Tick as "[x] statement" only after verifying it, with its evidence in the Evidence section. Done cannot be claimed while any line is unticked.)
 

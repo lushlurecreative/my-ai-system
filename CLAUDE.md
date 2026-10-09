@@ -53,7 +53,11 @@ If Shaun's message is not a task, answer it, give your view, and stop. Do not ed
 
 ## Agents and helpers
 
-`docs/AGENTS.md` maps each job to an agent, with its model and what it may change. Use the listed agent for the job; do not invent helpers. A job gets its own agent only when it differs in tools, permissions, expertise, independence or parallelism; otherwise add a lens to an existing one. Helpers return text and the main session is the only writer. Sonnet is the default; a hook enforces the model and a cap on helper runs per session. Creating or changing an agent needs Shaun's "yes, add agent <name>" in chat. The `reviewer` grades every task before DONE. Re-check one of a helper's facts yourself before repeating it.
+`docs/AGENTS.md` maps each job to an agent, with its model and what it may change. Use the listed agent for the job; do not invent helpers. A job gets its own agent only when it differs in tools, permissions, expertise, independence or parallelism; otherwise add a lens to an existing one. Helpers return text and the main session is the only writer. Each agent runs on the model written in its own file; a hook enforces that and a cap on helper runs per session (`docs/MODELS.md`). Creating or changing an agent needs Shaun's "yes, add agent <name>" in chat. The `reviewer` grades every task before DONE. Re-check one of a helper's facts yourself before repeating it.
+
+## Models
+
+You cannot switch your own model; only Shaun can, with `/model`. At the start of every task fill the task card's `Model:` line with the model that suits it and why, and say it in one line next to the current model if you know it. `docs/MODELS.md` has the table. Say it again only when two real attempts at one problem have failed (suggest a stronger model) or the work turned routine (suggest a cheaper one). Never claim to have switched, and never ask for a stronger model without a reason from that table.
 
 ## Where things belong
 

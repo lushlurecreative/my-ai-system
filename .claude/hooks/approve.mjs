@@ -23,6 +23,7 @@ const GO = [
   new RegExp('^' + YES + '?(?:start|begin|proceed|approved?)\\b', 'i'),
   /^(?:do\s+)?(?:option|item|number|step|choice)\s*#?\d+/i,
   /^#?\d{1,2}[.)!]?$/,
+  /^(?:(?:option|item|choice)\s*#?[a-e]\b|[a-e][.)!]?$)/i,
   /^(?:let'?s|please)\s+(?:do|fix|go|start|build|run|finish|continue)\b/i,
   new RegExp('^' + YES + '(?:please\\s+)?(?:do|fix|build|run|finish)\\b', 'i'),
 ];

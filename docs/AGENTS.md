@@ -6,7 +6,7 @@ Claude hands a job to a listed agent. It does not invent helpers on the fly. Age
 
 **Single writer:** helpers return text. Only the main session writes files, so two helpers never collide.
 
-**Models:** every agent has one assigned model, written in its own file and explained in `docs/MODELS.md`. A hook runs the helper on that model and denies a launch that asks for another. A helper type with no agent file gets Sonnet, and Opus or Fable is denied unless `allowExpensiveHelpers` is true in `.claude/system.json`. The hook also stops launching after `maxHelpers` runs in one session (default 6).
+**Models:** every agent has one assigned model, written in its own file and explained in `docs/MODELS.md`. A hook runs the helper on that model and denies a launch that asks for another. A helper type with no agent file gets Sonnet, and Opus or Fable is denied unless `allowExpensiveHelpers` is true in `.claude/system.json`. The hook also stops launching after `maxHelpers` helper runs in one task (default 6); the reviewer is never counted and the count restarts with the next task.
 
 **Project-specific tools for an agent:** copy the agent file with a project prefix, for example `myproject-analyst.md`, and add the tool names. Updates from the master never overwrite prefixed files.
 

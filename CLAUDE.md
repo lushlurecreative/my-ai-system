@@ -58,7 +58,7 @@ If Shaun's message is not a task, answer it, give your view, and stop. Do not ed
 
 ## Agents and helpers
 
-`docs/AGENTS.md` maps each job to an agent, with its model and what it may change. Use the listed agent for the job; do not invent helpers. A job gets its own agent only when it differs in tools, permissions, expertise, independence or parallelism; otherwise add a lens to an existing one. Helpers return text and the main session is the only writer. Each agent runs on the model written in its own file; a hook enforces that and a cap on helper runs per session (`docs/MODELS.md`). Creating or changing an agent needs Shaun's "yes, add agent <name>" in chat. The `reviewer` grades every task before DONE. Re-check one of a helper's facts yourself before repeating it.
+`docs/AGENTS.md` maps each job to an agent, with its model and what it may change. Use the listed agent for the job; do not invent helpers. A job gets its own agent only when it differs in tools, permissions, expertise, independence or parallelism; otherwise add a lens to an existing one. Helpers return text and the main session is the only writer. Each agent runs on the model written in its own file; a hook enforces that and a cap on helper runs per task (the reviewer is never counted) (`docs/MODELS.md`). Creating or changing an agent needs Shaun's "yes, add agent <name>" in chat. The `reviewer` grades every task before DONE. Re-check one of a helper's facts yourself before repeating it.
 
 ## Models
 

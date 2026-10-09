@@ -59,7 +59,7 @@ t('edit approvals.json -> deny', decision(edit('.claude/approvals.json')), 'deny
 fs.writeFileSync(path.join(T, '.claude/approvals.json'), JSON.stringify([{ name: 'oldpkg', ts: Date.now() - 48 * 3600 * 1000 }])); t('expired approval (48h) -> deny', decision(bash('npm install oldpkg')), 'deny');
 fs.rmSync(path.join(T, '.claude/approvals.json'), { force: true }); appr('install: react-ga4, posthog-js'); t('"install: a, b" approves both', decision(bash('npm install posthog-js')), 'allow');
 // ---- additions: agents (model floor, expensive-model block, helper cap, chat approval to add an agent) ----
-const agentTmp = path.join(os.tmpdir(), 'ais-agents-agtest.count'); fs.rmSync(agentTmp, { force: true });
+const clearAgentCounts = () => { for (const f of fs.readdirSync(os.tmpdir())) if (/^ais-agents-agtest/.test(f)) fs.rmSync(path.join(os.tmpdir(), f), { force: true }); }; clearAgentCounts();
 const agent = (ti) => run('agent-model-floor.mjs', { session_id: 'agtest', tool_name: 'Agent', tool_input: { subagent_type: 'analyst', prompt: 'x', ...ti } });
 const frontModel = (a) => ((fs.readFileSync(path.join(T, `.claude/agents/${a}.md`), 'utf8').match(/^model:\s*(\w+)/m) || [])[1]);
 const r1 = agent({}); t('listed agent with no model -> allowed, left to its own file (no override)', decision(r1) === 'allow' && !r1?.hookSpecificOutput?.updatedInput, true);
@@ -68,11 +68,16 @@ const r2 = agent({ subagent_type: 'scout' }); t('scout with no model keeps its h
 t('security runs on opus without allowExpensiveHelpers', decision(agent({ subagent_type: 'security' })) === 'allow' && frontModel('security') === 'opus', true); t('security asked for sonnet -> deny', decision(agent({ subagent_type: 'security', model: 'sonnet' })), 'deny'); t('reviewer is opus', frontModel('reviewer'), 'opus');
 const r3 = agent({ subagent_type: 'general-purpose' }); t('unlisted helper with no model -> allowed and set to sonnet', decision(r3) === 'allow' && r3?.hookSpecificOutput?.updatedInput?.model === 'sonnet', true);
 t('unlisted helper on haiku -> allowed', decision(agent({ subagent_type: 'general-purpose', model: 'haiku' })), 'allow'); t('unlisted helper on fable -> deny', decision(agent({ subagent_type: 'general-purpose', model: 'fable' })), 'deny'); t('unlisted helper on opus -> deny', decision(agent({ subagent_type: 'general-purpose', model: 'opus' })), 'deny');
-fs.rmSync(agentTmp, { force: true }); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: true })); t('opus allowed for an unlisted helper when Shaun sets allowExpensiveHelpers', decision(agent({ subagent_type: 'general-purpose', model: 'opus' })), 'allow');
-fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false })); fs.rmSync(agentTmp, { force: true });
+clearAgentCounts(); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: true })); t('opus allowed for an unlisted helper when Shaun sets allowExpensiveHelpers', decision(agent({ subagent_type: 'general-purpose', model: 'opus' })), 'allow');
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false })); clearAgentCounts();
 for (let i = 0; i < 6; i++) agent({}); t('7th helper in one session -> deny (cap 6)', decision(agent({})), 'deny');
-fs.rmSync(agentTmp, { force: true }); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 1 })); agent({}); t('cap of 1 honored', decision(agent({})), 'deny');
-fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false })); fs.rmSync(agentTmp, { force: true });
+clearAgentCounts(); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 1 })); agent({}); t('cap of 1 honored', decision(agent({})), 'deny');
+// the cap is per task, and the reviewer never counts
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 1 })); clearAgentCounts(); task('ACTIVE', ['docs/**'], [], '');
+t('analyst run 1 of 1 -> allow', decision(agent({})), 'allow'); t('analyst run 2 with cap 1 -> deny', decision(agent({})), 'deny');
+t('reviewer still launches when the cap is spent', decision(agent({ subagent_type: 'reviewer' })), 'allow'); for (let i = 0; i < 9; i++) agent({ subagent_type: 'reviewer' }); t('reviewer launches a tenth time -> allow', decision(agent({ subagent_type: 'reviewer' })), 'allow');
+fs.writeFileSync(path.join(T, 'docs/TASK.md'), fs.readFileSync(path.join(T, 'docs/TASK.md'), 'utf8').replace('- x', '- a different task')); t('a new task restarts the helper count', decision(agent({})), 'allow');
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false })); clearAgentCounts();
 fs.rmSync(path.join(T, '.claude/approvals.json'), { force: true });
 const ag = (n) => run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: path.join(T, `.claude/agents/${n}.md`) } });
 t('write a new agent file with no approval -> deny', decision(ag('marketing')), 'deny');

@@ -72,4 +72,6 @@ The master may read and promote from Shaun's global tools library (path in `.cla
 
 ## Talking to Shaun
 
+Never ask Shaun to type commands in Terminal or copy files around. Run the step yourself (the hooks decide what is allowed), or give him one plain sentence to say in chat. Syncing is yours: when the startup says the folder is behind GitHub and `git status` is clean, run `git pull --ff-only` and say so in one line; after a task is DONE with a reviewer PASS, push to `main` as the task says.
+
 Answer the question he asked in the first sentence. No recap, no apology, no offer before the answer. Short status. He reads results, not narration.

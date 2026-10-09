@@ -13,7 +13,8 @@ cp "$SRC/.claude/settings.json" "$DST/.claude/settings.json"; cp "$SRC/CLAUDE.md
 NOTES=""
 # docs/TASK.md: replace only when idle and in the old format
 if [ -f "$DST/docs/TASK.md" ]; then
-  if ! grep -q "^Scope ledger" "$DST/docs/TASK.md" || ! grep -q "^Model" "$DST/docs/TASK.md"; then
+  # a card with no Model line is replaced only when truly idle (NONE); a DONE card is a record and is kept
+  if ! grep -q "^Scope ledger" "$DST/docs/TASK.md" || { ! grep -q "^Model" "$DST/docs/TASK.md" && grep -qE "^Status:[[:space:]]*NONE" "$DST/docs/TASK.md"; }; then
     if grep -qE "^Status:[[:space:]]*(NONE|DONE)" "$DST/docs/TASK.md"; then cp "$SRC/docs/TASK.md" "$DST/docs/TASK.md"; NOTES="$NOTES\n- docs/TASK.md was idle and in the old format: replaced with the new template."; else NOTES="$NOTES\n- docs/TASK.md has an active task in the old format. Add 'Type:', 'Tools needed:' and 'Model' lines to it by hand."; fi
   fi
 else cp "$SRC/docs/TASK.md" "$DST/docs/TASK.md"; fi

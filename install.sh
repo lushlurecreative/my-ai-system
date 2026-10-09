@@ -11,11 +11,11 @@ mkdir -p "$DST/.claude/hooks" "$DST/.claude/agents" "$DST/.claude/skills" "$DST/
 cp "$SRC"/.claude/hooks/*.mjs "$DST/.claude/hooks/"; cp "$SRC"/.claude/agents/*.md "$DST/.claude/agents/"; cp -R "$SRC"/.claude/skills/. "$DST/.claude/skills/"
 cp "$SRC/.claude/settings.json" "$DST/.claude/settings.json"; cp "$SRC/CLAUDE.md" "$DST/CLAUDE.md"; cp "$SRC/docs/HOW-TO-RUN-A-SESSION.md" "$SRC/docs/MODELS.md" "$DST/docs/"
 NOTES=""
-# docs/TASK.md: replace only when idle and in the old format
+# docs/TASK.md: only a truly idle card (Status NONE) is ever replaced, and only when it lacks the current format. A DONE card is a record and an ACTIVE card is live work; neither is touched.
 if [ -f "$DST/docs/TASK.md" ]; then
-  # a card with no Model line is replaced only when truly idle (NONE); a DONE card is a record and is kept
-  if ! grep -q "^Scope ledger" "$DST/docs/TASK.md" || { ! grep -q "^Model" "$DST/docs/TASK.md" && grep -qE "^Status:[[:space:]]*NONE" "$DST/docs/TASK.md"; }; then
-    if grep -qE "^Status:[[:space:]]*(NONE|DONE)" "$DST/docs/TASK.md"; then cp "$SRC/docs/TASK.md" "$DST/docs/TASK.md"; NOTES="$NOTES\n- docs/TASK.md was idle and in the old format: replaced with the new template."; else NOTES="$NOTES\n- docs/TASK.md has an active task in the old format. Add 'Type:', 'Tools needed:' and 'Model' lines to it by hand."; fi
+  if grep -qE "^Status:[[:space:]]*NONE" "$DST/docs/TASK.md"; then
+    if ! grep -q "^Scope ledger" "$DST/docs/TASK.md" || ! grep -q "^Model" "$DST/docs/TASK.md"; then cp "$SRC/docs/TASK.md" "$DST/docs/TASK.md"; NOTES="$NOTES\n- docs/TASK.md was idle and in the old format: replaced with the new template."; fi
+  elif grep -qE "^Status:[[:space:]]*ACTIVE" "$DST/docs/TASK.md" && ! grep -q "^Scope ledger" "$DST/docs/TASK.md"; then NOTES="$NOTES\n- docs/TASK.md has an active task in the old format. Add 'Type:', 'Tools needed:' and 'Model' lines to it by hand."
   fi
 else cp "$SRC/docs/TASK.md" "$DST/docs/TASK.md"; fi
 # docs/TOOLBOX.md: old format has no Status column

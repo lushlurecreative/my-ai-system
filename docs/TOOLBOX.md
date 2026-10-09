@@ -62,6 +62,10 @@ Cautions: workflow frameworks (Superpowers, Compound Engineering) bring their ow
 | Database queries (if hosted on Supabase) | Supabase MCP | known | list the tables of the right project | (never) |
 | Database queries (if hosted on Lovable) | Lovable connector | known | run select 1 against the right project | (never) |
 | Payments (sandbox only) | Stripe MCP | known | read the account in test mode; live mode is the owner's action | (never) |
+| See what real visitors do (replays, heatmaps) | Microsoft Clarity | known | a recording of a real session opens; its read-only MCP server (needs a Clarity export token) answers one dashboard question | (never) |
+| See what real visitors do (replays, heatmaps) | PostHog session replay (also reachable over the PostHog MCP) | known | search for one recording by a rage click; open it | (never) |
+| See what real visitors do (replays, heatmaps) | OpenReplay (self-hosted) | known | one recording plays back from the self-hosted instance | (never) |
+| See what real visitors do (replays, heatmaps) | Hotjar | known | free-plan limits read from Hotjar's own pricing page, then one recording opens | (never) |
 | Errors and monitoring | Sentry MCP | known | list recent errors | (never) |
 | Claude ecosystem | Anthropic Claude Plugins Official | known | list the plugins it offers | (never) |
 | Claude ecosystem | Anthropic Knowledge Work Plugins | known | list the plugins it offers | (never) |

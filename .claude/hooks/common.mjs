@@ -27,7 +27,11 @@ export function readToolbox(root) {
 }
 // Installs Shaun approved by typing "yes, install X" in chat (written by approve.mjs, which only the harness runs on his messages).
 export function readApprovals(root) {
-  try { const a = JSON.parse(fs.readFileSync(path.join(root, '.claude/approvals.json'), 'utf8')); const now = Date.now(); return (Array.isArray(a) ? a : []).filter((x) => x && x.name && now - Number(x.ts) < 24 * 3600 * 1000).map((x) => String(x.name).toLowerCase()); } catch { return []; }
+  try { const a = JSON.parse(fs.readFileSync(path.join(root, '.claude/approvals.json'), 'utf8')); const now = Date.now(); return (Array.isArray(a) ? a : []).filter((x) => x && x.name && !String(x.name).startsWith('__') && now - Number(x.ts) < 24 * 3600 * 1000).map((x) => String(x.name).toLowerCase()); } catch { return []; }
 }
+// Shaun's "go" (written by approve.mjs from his own chat message). One go opens one task; it expires after 6 hours. Stored as name "__go__" so it never counts as an install approval.
+const GO_MS = 6 * 3600 * 1000;
+export function readGo(root) { try { const a = JSON.parse(fs.readFileSync(path.join(root, '.claude/approvals.json'), 'utf8')); const now = Date.now(); return (Array.isArray(a) ? a : []).filter((x) => x && x.name === '__go__' && now - Number(x.ts) < GO_MS); } catch { return []; } }
+export function consumeGo(root) { const f = path.join(root, '.claude/approvals.json'); try { const a = JSON.parse(fs.readFileSync(f, 'utf8')); const now = Date.now(); const i = (Array.isArray(a) ? a : []).findIndex((x) => x && x.name === '__go__' && now - Number(x.ts) < GO_MS); if (i < 0) return; a.splice(i, 1); fs.writeFileSync(f, JSON.stringify(a)); } catch { /* nothing to consume */ } }
 export function system(root) { try { return JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch { return {}; } }
 export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');

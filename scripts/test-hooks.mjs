@@ -89,9 +89,56 @@ for (const a of ['analyst', 'marketing', 'security', 'design', 'researcher', 'to
 t('MODELS.md says Shaun switches the chat model with /model', /\/model/.test(modelsDoc) && /advice only/i.test(modelsDoc), true);
 t('task template has a Model line', /^Model \(/m.test(fs.readFileSync(path.join(SRC, 'docs/TASK.md'), 'utf8')), true); t('rules have a Models section', /^## Models/m.test(fs.readFileSync(path.join(T, 'CLAUDE.md'), 'utf8')), true);
 const ss = execSync(`node "${T}/.claude/hooks/session-start.mjs"`, { input: JSON.stringify({ source: 'startup', model: 'claude-sonnet-5-5' }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: T } }); t('session start shows the chat model and where to change it', /Chat model: claude-sonnet-5-5/.test(ss) && /\/model/.test(ss), true);
-const ss2 = execSync(`node "${T}/.claude/hooks/session-start.mjs"`, { input: '{}', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: T } }); t('session start works when the model name is not provided', /Chat model: unknown/.test(ss2), true);
+const ss2 = execSync(`node "${T}/.claude/hooks/session-start.mjs"`, { input: '{}', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: T } }); t('session start works when the model name is not provided', /Chat model: not reported/.test(ss2), true);
 const M = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-mod-')); fs.mkdirSync(path.join(M, 'docs'), { recursive: true }); fs.writeFileSync(path.join(M, 'docs/TASK.md'), '# Current task\n\nStatus: NONE\nType: BUILD\n\nTask:\n- x\n\nTools needed:\n- none\n\nDone means:\n- [ ] a\n\nScope ledger (required for ANALYSIS tasks):\n- x\n');
 execSync(`bash "${SRC}/install.sh" "${M}"`, { stdio: 'ignore' }); t('update: idle task card without a Model line gets the new template', /^Model \(/m.test(fs.readFileSync(path.join(M, 'docs/TASK.md'), 'utf8')) && fs.existsSync(path.join(M, 'docs/MODELS.md')), true); fs.rmSync(M, { recursive: true, force: true });
+// ---- additions: go gate, shell writes follow edit rules, rulings, stale-folder warning ----
+const { parseGo } = await import(`${SRC}/.claude/hooks/approve.mjs`);
+for (const y of ['go', 'Go.', 'go ahead', 'Yes, go', 'just do it', 'Just do it. I want you to finish', 'option 1', 'Option 2, but start with what already exists', 'Start one task: record the ruling', "let's fix it", 'do it', 'okay', 'yes', 'proceed', 'go draft the sub-goals file', '3', 'Do option 1']) t(`"${y.slice(0, 32)}" counts as go`, parseGo(y), true);
+for (const n of ['Okay, so then in plain English, tell me what to do', 'Do not talk to me like that', 'Done.', 'What do you think?', 'go back and check the folder', 'the reviewer returned PASS. Next I would do option 1', 'I am just sharing this: go', "Don't fucking stop till you have a solution. Research, find, investigate, implement a solution.", 'Yes, I want to know why', 'Read only. Change nothing, run no checks', 'Why are we not selling?']) t(`"${n.slice(0, 32)}" is not a go`, parseGo(n), false);
+const prompt = (text) => run('approve.mjs', { prompt: text });
+const activate = () => run('scope-guard.mjs', { tool_name: 'Edit', tool_input: { file_path: path.join(T, 'docs/TASK.md'), old_string: 'Status: NONE', new_string: 'Status: ACTIVE' } });
+const goFile = path.join(T, '.claude/approvals.json'); fs.rmSync(goFile, { force: true });
+task('NONE', [], [], ''); t('open a task with no go -> deny', decision(activate()), 'deny');
+prompt("Don't fucking stop till you have a solution. Research, find, investigate, implement a solution."); t('a pasted frustration quote is not a go: still deny', decision(activate()), 'deny');
+t('setting Status: NONE needs no go', decision(run('scope-guard.mjs', { tool_name: 'Edit', tool_input: { file_path: path.join(T, 'docs/TASK.md'), old_string: 'Status: ACTIVE', new_string: 'Status: NONE' } })), 'allow');
+prompt('go'); t('after Shaun says go, opening a task -> allow', decision(activate()), 'allow'); t('the go is used up: a second task -> deny', decision(activate()), 'deny');
+prompt('option 2'); t('"option 2" is a go', decision(activate()), 'allow');
+fs.writeFileSync(goFile, JSON.stringify([{ name: '__go__', ts: Date.now() - 7 * 3600 * 1000 }])); t('a go older than 6 hours -> deny', decision(activate()), 'deny');
+task('ACTIVE', ['src/pages/**'], [], ''); fs.rmSync(goFile, { force: true }); t('editing TASK.md while already ACTIVE needs no go', decision(activate()), 'allow');
+task('NONE', [], [], ''); t('Write of a whole TASK.md with Status: ACTIVE and no go -> deny', decision(run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: path.join(T, 'docs/TASK.md'), content: '# Current task\n\nStatus: ACTIVE\n' } })), 'deny');
+t('shell edit of TASK.md to ACTIVE with no go -> deny', decision(bash("sed -i 's/Status: NONE/Status: ACTIVE/' docs/TASK.md")), 'deny');
+prompt('go'); t('shell edit of TASK.md to ACTIVE after go -> allow', decision(bash("sed -i 's/Status: NONE/Status: ACTIVE/' docs/TASK.md")), 'allow');
+fs.rmSync(goFile, { force: true }); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: true, maxHelpers: 6 })); t('autopilot ON skips the go gate', decision(activate()), 'allow');
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false }));
+prompt('go'); t('a recorded go does not approve installs that contain "go"', decision(bash('npm install google-fonts')), 'deny'); fs.rmSync(goFile, { force: true });
+// shell writes follow the same rules as edits
+task('ACTIVE', ['src/pages/**'], [], '');
+t('shell redirect inside allowed paths -> allow', decision(bash('echo hi > src/pages/a.txt')), 'allow'); t('shell redirect outside allowed paths -> deny', decision(bash('echo hi > src/lib/other.ts')), 'deny');
+t('redirect to /tmp -> allow', decision(bash('echo hi > /tmp/x.txt')), 'allow'); t('redirect to /dev/null -> allow', decision(bash('ls > /dev/null 2>&1')), 'allow'); t('2>&1 alone -> allow', decision(bash('node script.js 2>&1')), 'allow');
+t('cp into a path outside allowed -> deny', decision(bash('cp a.txt src/lib/b.ts')), 'deny'); t('cp inside allowed paths -> allow', decision(bash('cp src/pages/a src/pages/b')), 'allow');
+t('rm of a file outside allowed paths -> deny', decision(bash('rm src/lib/x.ts')), 'deny'); t('mv out of allowed paths -> deny', decision(bash('mv src/pages/a src/lib/b')), 'deny');
+t('sed -i on a protected file -> deny', decision(bash("sed -i 's/a/b/' src/lib/pricing.ts")), 'deny'); t('tee outside allowed paths -> deny', decision(bash('echo x | tee src/lib/z.ts')), 'deny');
+t('test output into the project root -> deny', decision(bash('bun test > out.txt')), 'deny'); t('writing to the home folder -> deny', decision(bash('echo x > ~/notes.txt')), 'deny');
+t('a ">" inside quotes is not a redirect', decision(bash('git commit -m "a > b <noreply@x.com>"')), 'allow'); t('a comparison in node -e is not a redirect', decision(bash('node -e "console.log(1>0)"')), 'allow');
+t('heredoc body with ">" is ignored, redirect target still checked', decision(bash("cat <<'EOF' > src/pages/n.txt\na > b\nEOF")), 'allow'); t('heredoc into a forbidden file -> deny', decision(bash("cat <<'EOF' > src/lib/n.txt\nx\nEOF")), 'deny');
+task('ACTIVE', ['src/pages/**'], [], '', { type: 'ANALYSIS' }); t('ANALYSIS: shell write outside docs -> deny', decision(bash('echo x > src/pages/a.txt')), 'deny'); t('ANALYSIS: shell write into docs/notes -> allow', decision(bash('echo x > docs/notes/a.md')), 'allow');
+task('NONE', [], [], ''); t('no task: shell write to source -> deny', decision(bash('echo x > src/pages/a.txt')), 'deny'); t('no task: append to docs/NEXT.md -> allow', decision(bash('echo "- idea" >> docs/NEXT.md')), 'allow');
+t('no task: record a ruling with the edit tool -> allow', decision(edit('docs/RULINGS.md')), 'allow'); t('no task: append a ruling by shell -> allow', decision(bash('echo "- 2026-10-09: x" >> docs/RULINGS.md')), 'allow');
+// rulings and startup warnings
+fs.writeFileSync(path.join(T, 'docs/RULINGS.md'), '# Rulings\n\n<!-- Format -->\n- 2026-10-09: the Alpha thing is parked on purpose.\n');
+const startup = (dir, input = {}) => execSync(`node "${dir}/.claude/hooks/session-start.mjs"`, { input: JSON.stringify({ source: 'startup', ...input }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+const ctx = (o) => JSON.parse(o).hookSpecificOutput.additionalContext; const s1 = ctx(startup(T));
+t('startup shows the rulings', /Alpha thing is parked/.test(s1), true); t('startup says no task starts until go', /no task starts until Shaun says go/.test(s1), true); t('startup says archive is history', /docs\/archive\/.*history/.test(s1), true);
+t('startup shows the chat model when reported', /Chat model: claude-opus-5-5/.test(ctx(startup(T, { model: 'claude-opus-5-5' }))), true);
+const Bare = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-bare-')); execSync('git init -q --bare -b main', { cwd: Bare });
+const A = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-a-')); execSync(`bash "${SRC}/install.sh" "${A}"`, { stdio: 'ignore' }); const g = (cwd, c) => execSync(c, { cwd, stdio: 'ignore' });
+g(A, 'git init -q -b main && git config user.email t@t && git config user.name t && git add -A && git commit -q -m one'); g(A, `git remote add origin "${Bare}" && git push -q -u origin main`);
+t('up to date folder: no behind-GitHub warning', /behind GitHub/.test(ctx(startup(A))), false);
+const C = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-c-')); execSync(`git clone -q "${Bare}" "${C}"`); g(C, 'git config user.email t@t && git config user.name t && echo x > f.txt && git add -A && git commit -q -m two && git push -q origin main');
+t('folder behind GitHub: startup warns', /WARNING: this folder is 1 commit behind GitHub/.test(ctx(startup(A))), true);
+fs.rmSync(path.join(A, '.claude/system-version')); t('missing system-version: startup warns', /system-version is missing/.test(ctx(startup(A))), true);
+for (const d of [Bare, A, C]) fs.rmSync(d, { recursive: true, force: true });
 // ---- additions: lens skills, universality (no project names), version stamp, install/update behavior ----
 const skillNames = ['first-impression', 'naive-customer', 'expert-customer', 'trust-audit', 'value-audit', 'pricing-review', 'competitor-test', 'pmf-red-team', 'reliability-audit', 'evidence-synthesizer'];
 for (const k of skillNames) { const f = path.join(T, `.claude/skills/${k}/SKILL.md`); const x = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''; t(`skill ${k} installed with name and description`, new RegExp(`^---\\nname: ${k}\\ndescription: .+\\n---`).test(x) && /docs\/PROJECT\.md/.test(x), true); }
@@ -106,7 +153,7 @@ const out = execSync(`bash "${SRC}/install.sh" "${U}"`, { encoding: 'utf8' });
 t('update: old TOOLBOX saved as TOOLBOX.old.md', fs.existsSync(path.join(U, 'docs/TOOLBOX.old.md')), true); t('update: new TOOLBOX has Status column', /\| Status \|/.test(fs.readFileSync(path.join(U, 'docs/TOOLBOX.md'), 'utf8')), true);
 t('update: idle old TASK.md replaced by new template', /^Tools needed:/m.test(fs.readFileSync(path.join(U, 'docs/TASK.md'), 'utf8')), true); t('update: project NEXT.md kept', /keep me/.test(fs.readFileSync(path.join(U, 'docs/NEXT.md'), 'utf8')), true);
 t('update: project PROTECTED.md kept', /a\.ts/.test(fs.readFileSync(path.join(U, 'PROTECTED.md'), 'utf8')), true); const sj = JSON.parse(fs.readFileSync(path.join(U, '.claude/system.json'), 'utf8')); t('update: system.json keeps project value and gains new keys', sj.autopilot === true && sj.maxHelpers === 6, true);
-t('update: tells the owner what needs attention', /Needs attention/.test(out), true);
+t('update: tells the owner what needs attention', /Needs attention/.test(out), true); t('install: RULINGS.md created in a new project', fs.existsSync(path.join(U, 'docs/RULINGS.md')), true); fs.writeFileSync(path.join(U, 'docs/RULINGS.md'), '# Rulings\n- 2026-01-01: keep me\n'); execSync(`bash "${SRC}/install.sh" "${U}"`, { stdio: 'ignore' }); t('update: project RULINGS.md kept', /keep me/.test(fs.readFileSync(path.join(U, 'docs/RULINGS.md'), 'utf8')), true);
 fs.writeFileSync(path.join(U, 'docs/TASK.md'), '# Current task\n\nStatus: ACTIVE\n\nTask:\n- x\n'); const out2 = execSync(`bash "${SRC}/install.sh" "${U}"`, { encoding: 'utf8' }); t('update: active old-format task is not overwritten, owner is told', /Status: ACTIVE/.test(fs.readFileSync(path.join(U, 'docs/TASK.md'), 'utf8')) && /active task in the old format/.test(out2), true);
 fs.rmSync(U, { recursive: true, force: true });
 // ---- additions: read-only library scan ----

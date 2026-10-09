@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // PreToolUse: one task at a time, enforced. Decisions are DENY (in auto mode an "ask" is answered by the machine). Fails open on crash.
-import fs from 'node:fs';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden } from './override.mjs';
-import { deny, rel, readTask, readToolbox, readApprovals, globRe } from './common.mjs';
-const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS)\.md$/, /^docs\/notes\//];
+import { deny, rel, readTask, readToolbox, readApprovals, readGo, consumeGo, system, globRe } from './common.mjs';
+const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS)\.md$/, /^docs\/notes\//];
 export function checkEdit(root, filePath) {
   const r = rel(root, filePath);
   if (r.startsWith('..')) return deny(`Edits outside the project (${r}) are not allowed.`);
@@ -39,9 +39,41 @@ function checkInstall(root, c) {
   const lower = c.toLowerCase(); if (readApprovals(root).some((n) => lower.includes(n))) return null;
   return deny('Installing software needs Shaun\'s yes. Tell him in two lines what you want to install and why. He answers in chat, for example "yes, install <name>", and then this command is allowed. Never work around this.');
 }
+// A task starts only on Shaun's go. approve.mjs records the go from his own chat message; opening a task (Status: ACTIVE) uses it up. Autopilot skips the gate.
+export function gateActivation(root, text) {
+  if (!/Status:\s*ACTIVE\b/i.test(String(text || ''))) return null;
+  if (readTask(root).status === 'ACTIVE' || system(root).autopilot) return null;
+  if (readGo(root).length) { consumeGo(root); return null; }
+  return deny('A task cannot start yet: Shaun has not said go in chat (sharing information, a quote or a pasted reply is not a go). Name the task in one sentence and stop. When he types go, "option 2", "do it" or "start ...", set Status: ACTIVE.');
+}
+// Shell commands that write files follow the same rules as edits. Quoted text and heredoc bodies are ignored; a path with a variable or wildcard cannot be checked and is skipped.
+const NOISE = (c) => c.replace(/<<-?\s*(['"]?)(\w+)\1([^\n]*)\n[\s\S]*?\n\s*\2\b/g, ' $3 ').replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, '""');
+const TMP = [os.tmpdir(), '/tmp', '/private/tmp', '/var/tmp', '/var/folders', '/private/var/folders'];
+export function shellTargets(cmd) {
+  const c = NOISE(String(cmd || '')); const out = [];
+  for (const m of c.matchAll(/(?:^|[\s;&|(])\d?>>?(?!&)\s*([^\s;&|<>()"]+)/g)) out.push(m[1]);
+  for (const seg of c.split(/[;&|\n]+/)) {
+    const a = seg.trim().split(/\s+/).filter(Boolean); if (!a.length) continue; const cmdName = a[0].replace(/^.*\//, ''); const args = a.slice(1).filter((x) => !x.startsWith('-') && x !== '""' && !/[<>]/.test(x));
+    if (cmdName === 'tee' || cmdName === 'cp' || cmdName === 'install') { if (args.length) out.push(args[args.length - 1]); }
+    else if (cmdName === 'mv' || cmdName === 'rm') out.push(...args);
+    else if (cmdName === 'sed' && a.some((x) => /^-[a-zA-Z]*i/.test(x)) && args.length) out.push(args[args.length - 1]);
+  }
+  return out.map((x) => x.replace(/^["']|["']$/g, '')).filter(Boolean);
+}
+export function checkShellWrites(root, cmd) {
+  for (const raw of shellTargets(cmd)) {
+    if (/[$*?`{]/.test(raw) || /^\/dev\//.test(raw)) continue;
+    const abs = raw.startsWith('~') ? path.join(os.homedir(), raw.slice(1)) : path.resolve(root, raw);
+    const r = rel(root, abs); if (r.startsWith('.git/') || r === '.git') continue;
+    if (r.startsWith('..') && TMP.some((t) => abs === t || abs.startsWith(t + '/'))) continue;
+    const d = checkEdit(root, abs); if (d) return deny(`Shell write to ${raw} is blocked: ${d.hookSpecificOutput.permissionDecisionReason} (Commands that write files follow the same rules as edits. Scratch output goes under /tmp.)`);
+  }
+  return null;
+}
 export function checkBash(root, cmd) {
   const c = String(cmd || '');
   const inst = checkInstall(root, c); if (inst) return inst;
+  if (/TASK\.md/.test(c) && /Status:\s*ACTIVE/i.test(c) && /(>>?|\btee\b|\bsed\s+-\w*i|\bpython3?\b|\bnode\b|\bperl\b|\bawk\b)/.test(c)) { const g = gateActivation(root, c); if (g) return g; }
   if (/\bgit\s+push\b/.test(c)) {
     if (/\s(-f|--force|--force-with-lease)\b|\s\+\w/.test(c)) return deny('Force push is never allowed.');
     const toMain = /\bmain\b|\bmaster\b/.test(c) || !/\bgit\s+push\s+\S+\s+\S+/.test(c);
@@ -49,11 +81,14 @@ export function checkBash(root, cmd) {
   }
   if (/\brm\s+-[a-zA-Z]*r[a-zA-Z]*f|\brm\s+-[a-zA-Z]*f[a-zA-Z]*r|\bgit\s+reset\s+--hard|\bgit\s+checkout\s+--\s+\.|\bgit\s+clean\s+-[a-zA-Z]*f|\bdb\s+reset\b|\bdrop\s+(table|schema|database)\b|\btruncate\s+table\b/i.test(c)) return deny('Destructive command blocked (rm -rf, git reset --hard, git clean, db reset, DROP, TRUNCATE). Ask Shaun.');
   if ([...SELF, ...SELF_DIRS].some((s) => c.includes(s)) && /(>>?|\btee\b|\bsed\s+-i|\bmv\b|\bcp\b|\brm\b|<<|\bwriteFile)/.test(c)) return deny('Shell writes to CLAUDE.md, PROTECTED.md or .claude/ are not allowed. Only Shaun edits the rules.');
-  return null;
+  return checkShellWrites(root, c);
 }
 export function check(input) {
   const root = input?.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(); const name = String(input?.tool_name || ''); const ti = input?.tool_input || {};
-  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) return checkEdit(root, ti.file_path || ti.notebook_path);
+  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) {
+    if (rel(root, ti.file_path || '') === 'docs/TASK.md') { const g = gateActivation(root, [ti.new_string, ti.content, ...(Array.isArray(ti.edits) ? ti.edits.map((e) => e.new_string) : [])].filter(Boolean).join('\n')); if (g) return g; }
+    return checkEdit(root, ti.file_path || ti.notebook_path);
+  }
   if (name === 'Bash') return checkBash(root, ti.command);
   return null;
 }

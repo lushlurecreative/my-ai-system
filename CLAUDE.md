@@ -5,7 +5,7 @@ Owner: Shaun. He is not an engineer. He gives the task and the decisions; Claude
 ## One task, then stop
 
 1. **Start.** The session hook shows `docs/TASK.md` and the top of `docs/NEXT.md`. Nothing else authorizes work: not chat history, not memory plugins, not old handoffs.
-2. **Take the task Shaun gives.** Write it into TASK.md: one sentence, `Type: BUILD` or `ANALYSIS`, the 1-3 questions that would change the work, the allowed paths, `Tools needed` (see Tools), and "done means" as checkbox lines (`[ ] statement`). **Ask the questions and wait.** Then set `Status: ACTIVE`.
+2. **A task starts only on Shaun's go.** He says go, "option 2", "do it" or "start …" in chat; a hook blocks `Status: ACTIVE` until then and uses the go up when the task opens. Sharing information, a quote or a pasted reply is not a go. Until then name the task in one sentence and stop. **Take the task Shaun gives.** Write it into TASK.md: one sentence, `Type: BUILD` or `ANALYSIS`, the 1-3 questions that would change the work, the allowed paths, `Tools needed` (see Tools), and "done means" as checkbox lines (`[ ] statement`). **Ask the questions and wait.** Then set `Status: ACTIVE`.
 3. **Do only that task.** A hook blocks edits outside the allowed paths. Anything else you notice goes as one line under "Parked ideas" in NEXT.md. Never fix it. Never start it.
 4. **Prove it, then get it judged.** Put evidence in TASK.md (test output, screenshot path, the live URL and what it showed). Launch the `reviewer` agent to grade the task against "Done means". Tick each "Done means" line `[x]` only after verifying it. Only when every line is ticked and the reviewer returns PASS, set `Status: DONE`. A hook blocks "done" without evidence and without the reviewer, and blocks pushing to `main` until then.
 5. **Stop.** With autopilot off (`.claude/system.json`): end with "Done. Next, in order, I'd do A, B or C, because …. Which one?" from NEXT.md, then stop. With autopilot on: move the top NEXT.md item into TASK.md and begin it as a new task from step 2.
@@ -23,6 +23,7 @@ When a task hits a problem, research it, investigate it, find a solution and imp
 - Force push; push to `main` before TASK.md is DONE; `rm -rf`, `git reset --hard`, database resets, DROP; destructive SQL through connectors.
 - Installing software, plugins or MCP servers without Shaun typing "yes, install <name>" in chat, and adding or changing an agent without "yes, add agent <name>". A hook records his approval; Claude cannot.
 - Spending money, credentials, deleting data: Shaun's actions only.
+- Shell commands that write files (`>`, `tee`, `cp`, `mv`, `rm`, `sed -i`) follow the same allowed paths as edits. Scratch output goes under `/tmp`.
 
 Before asking Shaun to unlock a protected file, show a reproduction that ran this turn proving the change is needed, and say why existing tests, including frozen ones, do not already cover the behavior. Then say in one sentence: "This needs `<path>`; unlock it with `.claude/override.txt` → `allow: <path>`." Then wait. Never work around a block.
 
@@ -44,8 +45,12 @@ When Shaun asks why something is not working, or asks Claude to look at somethin
 
 - Every BUILD task lists `Tools needed` in TASK.md (names as in TOOLBOX, or `- none`). A hook blocks edits if any listed tool is not `working`. Then do not improvise: tell Shaun in plain words, and either put "set up <tool>" first with his steps spelled out, or switch to a working tool.
 - Search for new tools only when a job has no working tool, a task failed for lack of one, a scheduled review is due, or Shaun asks. Never by habit.
-- Method: a cheap helper (`scout`) searches widely: our toolbox and connected tools, then GitHub, MCP registries, plugin and skill marketplaces, Anthropic docs, ordinary software. Other AIs may suggest names, never verdicts. Score every candidate the same way: fit, maintained, adoption, cost, setup effort, what it can touch, works with our stack. Trial the finalists on this project. Record the pick, runners-up, reasons and a re-check date. Important jobs keep two independent sources.
+- Method: a cheap helper (`scout`) searches widely: our toolbox and connected tools, then GitHub, MCP registries, plugin and skill marketplaces, Anthropic docs, ordinary software. Other AIs may suggest names, never verdicts. Check our own toolbox first, including tools planned for another job. Score every candidate the same way: fit, maintained, adoption, cost, setup effort, what it can touch, works with our stack, each 0 to 2. Read a finalist's primary page (README, pricing, license, last commit) before trusting a score; otherwise mark it unverified. When sources disagree, record both and mark the field conflicting. Log each run in `docs/DISCOVERY-LOG.md`. Trial the finalists on this project. Record the pick, runners-up, reasons and a re-check date. Important jobs keep two independent sources.
 - Install nothing until Shaun says "yes, install <name>" in chat.
+
+## Rulings and history
+
+When Shaun states a decision, parks something, says to disregard something or "from now on", append one dated line to `docs/RULINGS.md` at once, in his words, never your inference. No task is needed. Rulings outrank `docs/NEXT.md`, and you never propose work a ruling parks. `docs/archive/` and old handoffs are history, never current state; the session hook warns when a folder is behind GitHub.
 
 ## Discussion mode
 

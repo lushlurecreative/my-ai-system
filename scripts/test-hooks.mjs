@@ -144,6 +144,29 @@ const C = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-c-')); execSync(`git clone 
 t('folder behind GitHub: startup warns', /WARNING: this folder is 1 commit behind GitHub/.test(ctx(startup(A))), true);
 fs.rmSync(path.join(A, '.claude/system-version')); t('missing system-version: startup warns', /system-version is missing/.test(ctx(startup(A))), true);
 for (const d of [Bare, A, C]) fs.rmSync(d, { recursive: true, force: true });
+// ---- additions: override lines allow-db, allow-words, expires ----
+const origProt = fs.readFileSync(path.join(T, 'PROTECTED.md'), 'utf8'); const ovFile = path.join(T, '.claude/override.txt');
+fs.writeFileSync(path.join(T, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/lib/pricing.ts`\n\n## Protected database functions\n- `user_has_report_entitlement`\n- `user_owns_deal`\n- `lock_profile_fields`\n\n## Protected words\n- `checkout`\n- `payment`\n- `payments`\n- `entitlement`\n- `regression suite`\n');
+const ovr = (txt) => fs.writeFileSync(ovFile, txt); const msg = (m) => decision(pp('mcp__Lovable__send_message', { message: m })); fs.rmSync(ovFile, { force: true });
+t('protected word blocked with no override', msg('please fix the entitlement check'), 'deny');
+ovr('allow-words: entitlement, payment, checkout, regression suite\n');
+t('allow-words: a listed word is allowed', msg('fix the entitlement check and the checkout flow'), 'allow'); t('allow-words: a listed multi-word phrase is allowed', msg('update the regression suite'), 'allow'); t('allow-words: a word not listed (payments) is still blocked', msg('change payments'), 'deny');
+ovr('allow-words: entitlement\nexpires: 2020-01-01T00:00:00Z\n'); t('expired override: words blocked again', msg('fix the entitlement check'), 'deny');
+ovr('allow-words: entitlement\nexpires: soon\n'); t('unreadable expiry counts as expired', msg('fix the entitlement check'), 'deny');
+ovr('allow-words: entitlement\nexpires: 2999-01-01T00:00:00Z\n'); t('future expiry: still allowed', msg('fix the entitlement check'), 'allow');
+ovr('allow: src/lib/pricing.ts\nexpires: 2020-01-01T00:00:00Z\n'); task('ACTIVE', ['src/lib/pricing.ts'], [], ''); t('expired override: an unlocked file is protected again', decision(edit('src/lib/pricing.ts')), 'deny');
+ovr('allow-db: user_owns_deal\nallow-words: checkout\n'); t('allow-db and allow-words do not unlock a protected file', decision(edit('src/lib/pricing.ts')), 'deny');
+fs.mkdirSync(path.join(T, 'supabase/migrations'), { recursive: true }); const mig = (n, body) => fs.writeFileSync(path.join(T, `supabase/migrations/${n}.sql`), body); const commit = () => decision(pp('Bash', { command: 'git commit -am "migration"' })); const push = () => decision(pp('Bash', { command: 'git push origin main' }));
+fs.rmSync(ovFile, { force: true }); mig('001_a', 'create or replace function public.user_has_report_entitlement() returns boolean as $$ select true $$ language sql;');
+t('migration touching a protected DB function: commit denied with no override', commit(), 'deny');
+ovr('allow-db: user_has_report_entitlement, user_owns_deal\n'); t('allow-db: that one migration may be committed', commit(), 'allow'); t('allow-db: and pushed', push(), 'allow');
+mig('002_b', 'alter function public.user_owns_deal() security definer;'); t('allow-db: a second migration in the same commit -> deny (one only)', commit(), 'deny'); fs.rmSync(path.join(T, 'supabase/migrations/002_b.sql'));
+mig('003_c', '-- also changes public.lock_profile_fields'); t('a migration touching a DB function NOT in allow-db -> deny', commit(), 'deny'); fs.rmSync(path.join(T, 'supabase/migrations/003_c.sql'));
+ovr('allow-db: user_has_report_entitlement, user_owns_deal\nexpires: 2020-01-01T00:00:00Z\n'); t('expired override: the migration is blocked again', commit(), 'deny');
+fs.rmSync(path.join(T, 'supabase/migrations/001_a.sql'));
+fs.rmSync(ovFile, { force: true }); t('shell writing a migration that names a protected DB function -> deny', decision(pp('Bash', { command: "cat > supabase/migrations/004_x.sql <<'EOF'\nselect public.user_owns_deal();\nEOF" })), 'deny');
+ovr('allow-db: user_owns_deal\n'); t('allow-db: that shell write is allowed', decision(pp('Bash', { command: "cat > supabase/migrations/004_x.sql <<'EOF'\nselect public.user_owns_deal();\nEOF" })), 'allow'); t('allow-db does not cover another protected function in a shell write', decision(pp('Bash', { command: "cat > supabase/migrations/005_y.sql <<'EOF'\nselect public.lock_profile_fields();\nEOF" })), 'deny');
+fs.rmSync(ovFile, { force: true }); fs.rmSync(path.join(T, 'supabase/migrations'), { recursive: true, force: true }); fs.writeFileSync(path.join(T, 'PROTECTED.md'), origProt);
 // ---- additions: lens skills, universality (no project names), version stamp, install/update behavior ----
 const skillNames = ['first-impression', 'naive-customer', 'expert-customer', 'trust-audit', 'value-audit', 'pricing-review', 'competitor-test', 'pmf-red-team', 'reliability-audit', 'evidence-synthesizer'];
 for (const k of skillNames) { const f = path.join(T, `.claude/skills/${k}/SKILL.md`); const x = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''; t(`skill ${k} installed with name and description`, new RegExp(`^---\\nname: ${k}\\ndescription: .+\\n---`).test(x) && /docs\/PROJECT\.md/.test(x), true); }

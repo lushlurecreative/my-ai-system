@@ -166,6 +166,15 @@ ovr('allow-db: user_has_report_entitlement, user_owns_deal\nexpires: 2020-01-01T
 fs.rmSync(path.join(T, 'supabase/migrations/001_a.sql'));
 fs.rmSync(ovFile, { force: true }); t('shell writing a migration that names a protected DB function -> deny', decision(pp('Bash', { command: "cat > supabase/migrations/004_x.sql <<'EOF'\nselect public.user_owns_deal();\nEOF" })), 'deny');
 ovr('allow-db: user_owns_deal\n'); t('allow-db: that shell write is allowed', decision(pp('Bash', { command: "cat > supabase/migrations/004_x.sql <<'EOF'\nselect public.user_owns_deal();\nEOF" })), 'allow'); t('allow-db does not cover another protected function in a shell write', decision(pp('Bash', { command: "cat > supabase/migrations/005_y.sql <<'EOF'\nselect public.lock_profile_fields();\nEOF" })), 'deny');
+// allow-migration narrows allow-db to ONE named migration file
+fs.mkdirSync(path.join(T, 'supabase/migrations'), { recursive: true });
+mig('20261016230000_b4', 'create or replace function public.user_has_report_entitlement() returns boolean as $$ select true $$ language sql;'); mig('20261016230100_other', '-- touches public.user_has_report_entitlement too');
+ovr('allow-db: user_has_report_entitlement\nallow-migration: supabase/migrations/20261016230000_b4.sql\n');
+t('allow-migration: only the named migration, other file mentioning the function -> deny', commit(), 'deny'); fs.rmSync(path.join(T, 'supabase/migrations/20261016230100_other.sql'));
+t('allow-migration: the named migration alone may be committed', commit(), 'allow');
+t('allow-migration: shell write of the named file -> allow', decision(pp('Bash', { command: "cat > supabase/migrations/20261016230000_b4.sql <<'EOF'\nselect user_has_report_entitlement();\nEOF" })), 'allow');
+t('allow-migration: shell write of a different migration naming the function -> deny', decision(pp('Bash', { command: "cat > supabase/migrations/20261016239999_zzz.sql <<'EOF'\nselect user_has_report_entitlement();\nEOF" })), 'deny');
+ovr('allow-db: user_has_report_entitlement\n'); mig('20261016230100_other', '-- touches public.user_has_report_entitlement too'); fs.rmSync(path.join(T, 'supabase/migrations/20261016230000_b4.sql')); t('without allow-migration any one migration may do it (unchanged behaviour)', commit(), 'allow');
 fs.rmSync(ovFile, { force: true }); fs.rmSync(path.join(T, 'supabase/migrations'), { recursive: true, force: true }); fs.writeFileSync(path.join(T, 'PROTECTED.md'), origProt);
 // ---- additions: the commit/push check looks only at what the command stages or pushes, never at untracked folders ----
 const H = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-git-')); execSync(`bash "${SRC}/install.sh" "${H}"`, { stdio: 'ignore' });

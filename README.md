@@ -11,6 +11,7 @@ A folder of rules, guard scripts, agents and lens skills for Claude Code. It ass
 Read `docs/HOW-TO-RUN-A-SESSION.md`. That is the only page a person needs.
 
 ## Known gaps
+- The commit check reads what a command stages or pushes (`git add` forms, `-a`, named paths, commits ahead of the remote). Untracked folders nothing stages are ignored. Unusual routes to git (an alias, a script that runs git) are not parsed.
 - The suite of 238 checks uses synthetic inputs. The system has run in one real project since 2026-10-09 and held; a real-session scenario suite (including "do task A, then also fix B") is not built.
 - Shell writes: redirects, `tee`, `cp`, `mv`, `rm` and `sed -i` are checked against the allowed paths. Not checked: scripts that write files themselves (`node`, `python`), `curl -o`, commands that change files as a side effect, and paths built from variables or wildcards. The reviewer's check of what changed is the backstop.
 - "Working" statuses in the toolbox are written by Claude after running the check. A script that computes them from the check's result is not built.

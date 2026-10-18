@@ -156,7 +156,7 @@ ovr('allow-words: entitlement\nexpires: soon\n'); t('unreadable expiry counts as
 ovr('allow-words: entitlement\nexpires: 2999-01-01T00:00:00Z\n'); t('future expiry: still allowed', msg('fix the entitlement check'), 'allow');
 ovr('allow: src/lib/pricing.ts\nexpires: 2020-01-01T00:00:00Z\n'); task('ACTIVE', ['src/lib/pricing.ts'], [], ''); t('expired override: an unlocked file is protected again', decision(edit('src/lib/pricing.ts')), 'deny');
 ovr('allow-db: user_owns_deal\nallow-words: checkout\n'); t('allow-db and allow-words do not unlock a protected file', decision(edit('src/lib/pricing.ts')), 'deny');
-fs.mkdirSync(path.join(T, 'supabase/migrations'), { recursive: true }); const mig = (n, body) => fs.writeFileSync(path.join(T, `supabase/migrations/${n}.sql`), body); const commit = () => decision(pp('Bash', { command: 'git commit -am "migration"' })); const push = () => decision(pp('Bash', { command: 'git push origin main' }));
+fs.mkdirSync(path.join(T, 'supabase/migrations'), { recursive: true }); const mig = (n, body) => fs.writeFileSync(path.join(T, `supabase/migrations/${n}.sql`), body); const commit = () => decision(pp('Bash', { command: 'git add supabase/migrations && git commit -m "migration"' })); const push = () => decision(pp('Bash', { command: 'git push origin main' }));
 fs.rmSync(ovFile, { force: true }); mig('001_a', 'create or replace function public.user_has_report_entitlement() returns boolean as $$ select true $$ language sql;');
 t('migration touching a protected DB function: commit denied with no override', commit(), 'deny');
 ovr('allow-db: user_has_report_entitlement, user_owns_deal\n'); t('allow-db: that one migration may be committed', commit(), 'allow'); t('allow-db: and pushed', push(), 'allow');
@@ -167,6 +167,33 @@ fs.rmSync(path.join(T, 'supabase/migrations/001_a.sql'));
 fs.rmSync(ovFile, { force: true }); t('shell writing a migration that names a protected DB function -> deny', decision(pp('Bash', { command: "cat > supabase/migrations/004_x.sql <<'EOF'\nselect public.user_owns_deal();\nEOF" })), 'deny');
 ovr('allow-db: user_owns_deal\n'); t('allow-db: that shell write is allowed', decision(pp('Bash', { command: "cat > supabase/migrations/004_x.sql <<'EOF'\nselect public.user_owns_deal();\nEOF" })), 'allow'); t('allow-db does not cover another protected function in a shell write', decision(pp('Bash', { command: "cat > supabase/migrations/005_y.sql <<'EOF'\nselect public.lock_profile_fields();\nEOF" })), 'deny');
 fs.rmSync(ovFile, { force: true }); fs.rmSync(path.join(T, 'supabase/migrations'), { recursive: true, force: true }); fs.writeFileSync(path.join(T, 'PROTECTED.md'), origProt);
+// ---- additions: the commit/push check looks only at what the command stages or pushes, never at untracked folders ----
+const H = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-git-')); execSync(`bash "${SRC}/install.sh" "${H}"`, { stdio: 'ignore' });
+fs.writeFileSync(path.join(H, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/lib/pricing.ts`\n\n## Protected database functions\n- `user_has_entitlement`\n\n## Protected words\n- `checkout`\n');
+fs.mkdirSync(path.join(H, 'src/lib'), { recursive: true }); fs.writeFileSync(path.join(H, 'src/lib/pricing.ts'), 'export const a = 1;\n'); fs.writeFileSync(path.join(H, 'notes.txt'), 'base\n'); fs.writeFileSync(path.join(H, 'My File.txt'), 'base\n');
+const Hbare = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-gitbare-')); execSync('git init -q --bare -b main', { cwd: Hbare });
+const gh = (c) => execSync(c, { cwd: H, stdio: 'ignore' }); gh('git init -q -b main && git config user.email t@t && git config user.name t && git add -A && git commit -q -m base'); gh(`git remote add origin "${Hbare}" && git push -q -u origin main`);
+const hk = (cmd) => decision(JSON.parse(execSync(`node "${H}/.claude/hooks/protected-paths.mjs"`, { input: JSON.stringify({ cwd: H, tool_name: 'Bash', tool_input: { command: cmd } }), encoding: 'utf8' }) || 'null')); const hkRaw = (cmd) => { const o = execSync(`node "${H}/.claude/hooks/protected-paths.mjs"`, { input: JSON.stringify({ cwd: H, tool_name: 'Bash', tool_input: { command: cmd } }), encoding: 'utf8' }); return o ? decision(JSON.parse(o)) : 'allow'; };
+const sql = 'create or replace function public.user_has_entitlement() returns boolean as $$ select true $$ language sql;';
+fs.mkdirSync(path.join(H, 'Historical Projects/old/supabase/migrations'), { recursive: true }); fs.writeFileSync(path.join(H, 'Historical Projects/old/supabase/migrations/001_old.sql'), sql);
+fs.writeFileSync(path.join(H, 'notes.txt'), 'changed\n'); gh('git add notes.txt');
+t('an untracked folder holding a migration is ignored when only notes.txt is staged', hkRaw('git commit -m "notes"'), 'allow');
+t('git add of one named file then commit: untracked folder still ignored', hkRaw('git add notes.txt && git commit -m "notes"'), 'allow');
+t('git add -A then commit would include that migration -> deny', hkRaw('git add -A && git commit -m "all"'), 'deny'); t('git add . then commit -> deny', hkRaw('git add . && git commit -m "all"'), 'deny');
+t('git add of the folder by name (quoted, with a space) -> deny', hkRaw('git add "Historical Projects" && git commit -m "x"'), 'deny');
+t('git commit -am with only tracked notes changed: untracked folder ignored', hkRaw('git commit -am "notes"'), 'allow');
+fs.writeFileSync(path.join(H, 'src/lib/pricing.ts'), 'export const a = 2;\n');
+t('a protected file edited but NOT staged does not block a commit of other files', hkRaw('git commit -m "notes"'), 'allow');
+t('git commit -am would sweep in the edited protected file -> deny', hkRaw('git commit -am "all tracked"'), 'deny'); t('git commit -a -m would too -> deny', hkRaw('git commit -a -m "all tracked"'), 'deny');
+t('git add of the protected file then commit -> deny', hkRaw('git add src/lib/pricing.ts && git commit -m "price"'), 'deny'); t('commit with the protected path named -> deny', hkRaw('git commit -m "price" -- src/lib/pricing.ts'), 'deny');
+gh('git add src/lib/pricing.ts'); t('protected file staged -> deny', hkRaw('git commit -m "price"'), 'deny');
+fs.writeFileSync(path.join(H, '.claude/override.txt'), 'allow: src/lib/pricing.ts\n'); t('protected file staged and unlocked in override.txt -> allow', hkRaw('git commit -m "price"'), 'allow'); fs.rmSync(path.join(H, '.claude/override.txt'));
+gh('git reset -q src/lib/pricing.ts && git checkout -q -- src/lib/pricing.ts'); gh('git commit -q -m notes');
+t('push with only untracked/unstaged leftovers and a clean commit -> allow', hkRaw('git push origin main'), 'allow');
+fs.writeFileSync(path.join(H, 'src/lib/pricing.ts'), 'export const a = 3;\n'); gh('git commit -q -am price');
+t('push where a commit ahead of origin changed a protected file -> deny', hkRaw('git push origin main'), 'deny');
+fs.writeFileSync(path.join(H, '.claude/override.txt'), 'allow: src/lib/pricing.ts\n'); t('that push is allowed when the file is unlocked', hkRaw('git push origin main'), 'allow'); fs.rmSync(path.join(H, '.claude/override.txt'));
+for (const d of [H, Hbare]) fs.rmSync(d, { recursive: true, force: true });
 // ---- additions: lens skills, universality (no project names), version stamp, install/update behavior ----
 const skillNames = ['first-impression', 'naive-customer', 'expert-customer', 'trust-audit', 'value-audit', 'pricing-review', 'competitor-test', 'pmf-red-team', 'reliability-audit', 'evidence-synthesizer'];
 for (const k of skillNames) { const f = path.join(T, `.claude/skills/${k}/SKILL.md`); const x = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''; t(`skill ${k} installed with name and description`, new RegExp(`^---\\nname: ${k}\\ndescription: .+\\n---`).test(x) && /docs\/PROJECT\.md/.test(x), true); }

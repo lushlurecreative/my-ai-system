@@ -20,6 +20,14 @@ const ANNOUNCE = /(?<!\b(?:whether|if) )\b(?:I'll|I will|I'm going to|I am going
 const HANDOFF = /\?\s*$|\bblocked (?:on|by)\b|\b(?:once|after) you\b|\bwaiting (?:on|for)\b|\byour call\b|\bwhich (?:one|numbers)\b|\bnumbers to run\b|\bAutopilot paused\b|\bstopp(?:ed|ing) (?:as|because) you\b/i;
 // Mid-task, asking permission to continue is not a valid stop. Genuine decisions ("should the price be monthly or yearly?") are not matched.
 const PERMISSION = /\b(?:want me to|would you like me to|do you want me to|shall I|should I (?:go ahead|proceed|continue|start|begin|fix|implement|run|check|build|do)|let me know if you(?:'d| would) like me|say go|waiting on your (?:go|ok|approval|permission))\b/i;
+// Asking Shaun to run, open, check or bring back something Claude can do itself. Real blockers (a login, money, an unlock, a decision) are exempt.
+const OFFLOAD = [
+  /\b(?:can|could|would|will) you (?:please )?(?:re-?run|run|open|visit|go to|click|refresh|load|check|test|try|verify|look at|screenshot|paste|copy|send)\b/i,
+  /\byou(?:'ll| will)? (?:need to|have to|should|must|can|could) (?:re-?run|run|open|visit|go to|click|refresh|load|check|test|try|verify|look at)\b/i,
+  /\b(?:and|then)\s+(?:tell|let|show|send|paste|bring|report)\b[^.?!\n]{0,30}\b(?:me|back)\b[^.?!\n]{0,40}\b(?:result|results|output|see|says|happens|screenshot|error|find|found)\b/i,
+  /\b(?:paste|send|bring|share)\b[^.?!\n]{0,20}\b(?:the|its|that|those)\s+(?:output|result|results|error|screenshot|log|logs)\b/i,
+];
+const REAL_BLOCKER = /\b(?:password|passcode|login|log in|log-in|sign in|sign-in|signed in|credentials?|2fa|two-factor|verification code|otp|token|secret|api key|payment|card|billing|spend|purchase|approve|approval|your decision|decide|decision|unlock|override|protected|physical|only you|stripe|dashboard|install)\b/i;
 const CLAIM = /\b(?:task (?:is )?(?:done|complete)|all done|is (?:now )?fixed|fixed\.|completed\.|finished\.|done\.)/i;
 export function reviewerRan(transcriptPath) {
   try { return fs.readFileSync(transcriptPath, 'utf8').split('\n').some((l) => { try { const d = JSON.parse(l); return d.type === 'assistant' && Array.isArray(d.message?.content) && d.message.content.some((b) => b.type === 'tool_use' && /^(Agent|Task)$/.test(b.name) && /reviewer/i.test(JSON.stringify(b.input || {}))); } catch { return false; } }); } catch { return true; }
@@ -31,6 +39,7 @@ export function judge(message, root, transcriptPath) {
   if (!HANDOFF.test(last) && ANNOUNCE.test(spoken)) return `Your reply ends by announcing work ("${spoken.match(ANNOUNCE)[0]}") instead of doing it. Do it now, or end in a valid stop: done with evidence plus the numbered list (autopilot off) or the next task started (autopilot on), a question only Shaun can answer, or a named blocker.`;
   const t = readTask(root);
   if (t.status === 'ACTIVE' && PERMISSION.test(spoken)) return 'You are mid-task and you are asking permission to continue. That is not a valid stop. Research it, investigate, decide, and do the next step. Valid stops: a decision only Shaun can make (give the options and your recommendation), a named blocker with what you tried, or done with evidence.';
+  if (OFFLOAD.some((r) => r.test(spoken)) && !REAL_BLOCKER.test(spoken)) return 'You are asking Shaun to do something you can do yourself (run it, open the page, check it, bring back a result). Do it now with your tools and carry on. Only a real blocker may go to him (a password or login, money, a protected unlock, a decision, a physical step), and then say what you were doing, what you tried, what blocks you, and the one thing you need.';
   if (CLAIM.test(spoken)) {
     if (t.status !== 'DONE' || t.evidence === 0) return `You said it is done, but docs/TASK.md is ${t.status} with ${t.evidence} evidence lines. Add the evidence (test output, screenshot path, live URL and result) and set Status: DONE, or do not claim done.`;
     if (t.doneTotal === 0) return 'docs/TASK.md has no "Done means" lines. Write the checkable statements, verify each, tick them, then claim done.';

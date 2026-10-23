@@ -270,4 +270,13 @@ asUser('Do option 1 and keep going'); t('autopilot on: Shaun gave a command -> s
 fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false }));
 asUser('Why is the header misaligned?'); t('autopilot off: Shaun asked a question -> a plain answer is allowed, no forced list', decision(run('done-check.mjs', { session_id: 'q3', last_assistant_message: 'Because the flex container has no gap.', transcript_path: tr })), 'allow');
 asUser('Go with the header fix'); t('autopilot off: Shaun gave a command -> list is still required', decision(run('done-check.mjs', { session_id: 'q4', last_assistant_message: 'Done.', transcript_path: tr })), 'block'); fs.rmSync(tr, { force: true });
+// ---- additions: do it yourself (no handing Shaun work Claude can do) ----
+task('ACTIVE', ['src/pages/**'], [], '');
+t('offload: "Can you run the regression suite and tell me the result?" -> block', decision(stopS('I built the check. Can you run the regression suite and tell me the result?', 'do1')), 'block');
+t('offload: "You\'ll need to open /admin and click Run, then tell me what you see" -> block', decision(stopS("The fix is in. You'll need to open /admin and click Run, then tell me what you see.", 'do2')), 'block');
+t('offload: "Run the deal, then paste the output here" -> block', decision(stopS('The change is ready. Run the deal, then paste the output here.', 'do3')), 'block');
+t('offload: "open the site on your phone and let me know what you see" -> block', decision(stopS('Please open the site on your phone and let me know what you see.', 'do4')), 'block');
+t('a result Claude produced itself -> allow', decision(stopS('I ran the regression suite: 57 of 57 passed on the live engine.', 'do5')), 'allow');
+t('a real blocker (needs the admin password) is allowed', decision(stopS('I opened /admin and tried to run the regression suite, but it needs the admin password, which only you have. Can you sign in on that page? I will keep going on the rest.', 'do6')), 'allow');
+t('"paste this into Terminal" is not an offload of Claude\'s work -> allow', decision(stopS('I cannot write that file. Paste this into Terminal: git pull', 'do7')), 'allow');
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -1,11 +1,23 @@
 #!/usr/bin/env node
 // Stop hook. (1) Ends by announcing work -> block (max 2 in a row per reason). (2) Claims done but TASK.md lacks Evidence or Reviewer PASS, or the reviewer agent never ran this session -> block once.
-// (1b) Asks permission to continue mid-task -> block. (1c) Claims done with unticked Done means, or an ANALYSIS with an open Scope ledger -> block. (3) Autopilot off and TASK is DONE but no "which one?" handback -> block once. Fails open.
+// (1b) Asks permission to continue mid-task -> block. (1c) Claims done with unticked Done means, or an ANALYSIS with an open Scope ledger -> block. (3) TASK is DONE with a reviewer PASS: autopilot off needs a numbered list of every NEXT item that can start now plus "which numbers"; autopilot on needs the next task started, not a question. Fails open.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { readTask, system } from './common.mjs';
+const NEEDS_SHAUN = /\bShaun(?:'s)?\b[^|]{0,60}\b(?:action|login|logins|decision|decides|decide|spend|approval|authoriz\w+|unlock|setup|set up|sign-in|only|led)\b|\bneeds? (?:Shaun|your)\b|\b(?:logins?|credentials?|rotate|spend|admin sign-in)\b|\bseparately authorized\b|\bparked\b|\byou(?:r|'ll|'d)?\b|\btype "yes|\bsay (?:when|anything)\b/i;
+export function startableItems(root) {
+  let t = ''; try { t = fs.readFileSync(path.join(root, 'docs/NEXT.md'), 'utf8'); } catch { return []; }
+  const body = t.split(/^Parked ideas/m)[0];
+  return [...body.matchAll(/^\s*\d+\.\s+(.+)$/gm)].map((m) => m[1]).filter((x) => !/^\(/.test(x) && !NEEDS_SHAUN.test(x));
+}
+export function lastUserText(transcriptPath) {
+  try { const ls = fs.readFileSync(transcriptPath, 'utf8').split('\n').filter(Boolean); for (let i = ls.length - 1; i >= 0; i--) { try { const d = JSON.parse(ls[i]); if (d.type !== 'user' || d.message?.role !== 'user') continue; const c = d.message.content; const txt = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b.type === 'text').map((b) => b.text).join('\n') : ''; if (txt.trim()) return txt.trim(); } catch {} } } catch {}
+  return '';
+}
+// A question from Shaun is answered, not turned into new work or a forced list.
+const isQuestion = (u) => !!u && u.length <= 1500 && !/^\s*(?:go|do|just do|start|proceed|option|yes|ok|okay)\b/i.test(u) && (/\?\s*$/.test(u) || /^\s*(?:why|what|how|who|when|where|which|can|could|should|would|is|are|was|were|does|did)\b/i.test(u));
 const MAX = 2;
 const ANNOUNCE = /(?<!\b(?:whether|if) )\b(?:I'll|I will|I'm going to|I am going to|I'm about to|let me)\s+(?:now\s+|go ahead and\s+)?(?:dig|push|get started|check|verify|run|do|start|begin|fix|deploy|test|look|investigate|update|write|implement|continue)\b|\b(?:continuing|proceeding|moving on)\b[^.?!]{0,60}\b(?:now|next)\b|\bnow (?:I'll|let me|checking|running|verifying)\b/i;
-const HANDOFF = /\?\s*$|\bblocked (?:on|by)\b|\b(?:once|after) you\b|\bwaiting (?:on|for)\b|\byour call\b|\bwhich one\b|\bNext, in order\b|\bstopp(?:ed|ing) (?:as|because) you\b/i;
+const HANDOFF = /\?\s*$|\bblocked (?:on|by)\b|\b(?:once|after) you\b|\bwaiting (?:on|for)\b|\byour call\b|\bwhich (?:one|numbers)\b|\bnumbers to run\b|\bAutopilot paused\b|\bstopp(?:ed|ing) (?:as|because) you\b/i;
 // Mid-task, asking permission to continue is not a valid stop. Genuine decisions ("should the price be monthly or yearly?") are not matched.
 const PERMISSION = /\b(?:want me to|would you like me to|do you want me to|shall I|should I (?:go ahead|proceed|continue|start|begin|fix|implement|run|check|build|do)|let me know if you(?:'d| would) like me|say go|waiting on your (?:go|ok|approval|permission))\b/i;
 const CLAIM = /\b(?:task (?:is )?(?:done|complete)|all done|is (?:now )?fixed|fixed\.|completed\.|finished\.|done\.)/i;
@@ -16,7 +28,7 @@ export function judge(message, root, transcriptPath) {
   const text = String(message || '').replace(/[‘’]/g, "'").trim(); if (!text) return null;
   const last = text.slice(-700).split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || text.slice(-700);
   const spoken = last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ');
-  if (!HANDOFF.test(last) && ANNOUNCE.test(spoken)) return `Your reply ends by announcing work ("${spoken.match(ANNOUNCE)[0]}") instead of doing it. Do it now, or end in a valid stop: done with evidence + next-3 question, a question only Shaun can answer, or a named blocker.`;
+  if (!HANDOFF.test(last) && ANNOUNCE.test(spoken)) return `Your reply ends by announcing work ("${spoken.match(ANNOUNCE)[0]}") instead of doing it. Do it now, or end in a valid stop: done with evidence plus the numbered list (autopilot off) or the next task started (autopilot on), a question only Shaun can answer, or a named blocker.`;
   const t = readTask(root);
   if (t.status === 'ACTIVE' && PERMISSION.test(spoken)) return 'You are mid-task and you are asking permission to continue. That is not a valid stop. Research it, investigate, decide, and do the next step. Valid stops: a decision only Shaun can make (give the options and your recommendation), a named blocker with what you tried, or done with evidence.';
   if (CLAIM.test(spoken)) {
@@ -28,7 +40,15 @@ export function judge(message, root, transcriptPath) {
     if (!/PASS/i.test(t.verdict)) return `TASK.md has no "Reviewer verdict: PASS". Launch the reviewer agent (Agent tool, subagent_type reviewer) to grade the task against "Done means", record its verdict in TASK.md, then finish.`;
     if (transcriptPath && !reviewerRan(transcriptPath)) return 'TASK.md says the reviewer passed, but no reviewer agent ran in this session. Run it now and record the real verdict.';
   }
-  if (t.status === 'DONE' && !system(root).autopilot && !/\bwhich one\b/i.test(last)) return 'Task is DONE and autopilot is off: end with "Done. Next, in order, I\'d do A, B or C, because …. Which one?" using docs/NEXT.md, then stop.';
+  if (t.status === 'DONE' && t.evidence > 0 && /PASS/i.test(t.verdict) && !(transcriptPath && isQuestion(lastUserText(transcriptPath)))) {
+    if (system(root).autopilot) { if (!/\bAutopilot paused:/i.test(text)) return 'Autopilot is on and this task is DONE with a reviewer PASS. Do not end with a question. Take the top item in docs/NEXT.md that needs nothing from Shaun (skip items that need his login, money, a protected unlock or a decision, and anything a ruling in docs/RULINGS.md parks), move it into docs/TASK.md as a new task and start it. If nothing on the list can start without him, end with "Autopilot paused:" and a numbered list of what needs him and why.'; }
+    else {
+      const need = startableItems(root).length; const listed = (text.match(/^\s*\d+[.)]\s+\S/gm) || []).length;
+      if (/\bpick (?:something|anything|one) (?:from|off) (?:the|this) list\b/i.test(text)) return 'Never list an option that says "pick something from the list". List the real items.';
+      if (need === 0 ? !/\bnothing\b/i.test(text) : listed < need) return `Task is DONE and autopilot is off: after "Done." list every item from docs/NEXT.md that can be started now (${need} found), numbered, each with one plain sentence of what it is and what it needs from Shaun (usually nothing). No cap. ${need === 0 ? 'If nothing can start without him, say so and list what needs him.' : `You listed ${listed}.`}`;
+      if (need > 0 && !/\bwhich (?:numbers|ones|items)\b|\bnumbers to run\b/i.test(last)) return 'End by asking which numbers to run.';
+    }
+  }
   return null;
 }
 function main() {

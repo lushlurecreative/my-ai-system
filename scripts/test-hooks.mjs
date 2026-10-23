@@ -34,8 +34,9 @@ t('destructive SQL -> deny', decision(pp('mcp__Lovable__query_database', { query
 task('ACTIVE', ['src/pages/**'], [], ''); t('announce -> block', decision(stop("Found the bug. I'll now fix the layout and run tests.")), 'block'); t('question -> allow', decision(stop('Should the price show monthly or yearly?')), 'allow');
 t('claims done without evidence -> block', decision(stop('The layout is fixed.')), 'block');
 task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], ''); t('done without reviewer -> block', decision(stop('Done.')), 'block');
-task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS'); t('done, no next-3 question, autopilot off -> block', decision(stop('Done. All good.')), 'block');
-t('done with next-3 question -> allow', decision(stop("Done. Next, in order, I'd do A, B or C, because A blocks sign-ups. Which one?")), 'allow');
+fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Fix the mobile header. | sub-goal: 2\n2. Re-check the pricing page. | sub-goal: 5\n3. Rotate the leaked token (Shaun's login only). | sub-goal: none\n4. Switch payments live (Shaun's action only). | sub-goal: 5\n\nParked ideas (not ranked):\n- a parked thought\n");
+task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS'); t('done, no list, autopilot off -> block', decision(stop('Done. All good.')), 'block');
+t('done with the old "A, B or C ... Which one?" wording and no list -> block', decision(stop("Done. Next, in order, I'd do A, B or C, because A blocks sign-ups. Which one?")), 'block');
 // ---- additions: tools-needed guard, ANALYSIS read-only, install block + chat approval ----
 fs.writeFileSync(path.join(T, 'docs/TOOLBOX.md'), '| Job | Tool | Status | Check | Last verified |\n|---|---|---|---|---|\n| Analytics | PostHog | known | count visitors | never |\n| Browser checks | Playwright | working | open homepage | 2026-10-08 |\n| Analytics | Google Analytics | needs Shaun | count visitors | never |\n');
 task('ACTIVE', ['src/pages/**'], [], '', { tools: null }); t('BUILD, no Tools needed list -> deny', decision(edit('src/pages/Home.tsx')), 'deny');
@@ -237,7 +238,7 @@ let missing = ''; try { execSync(`node "${SRC}/scripts/scan-library.mjs" "${L}/n
 fs.rmSync(L, { recursive: true, force: true }); fs.rmSync(rep, { force: true });
 // ---- additions: checkbox done-gate, analysis scope ledger, permission-seeking stop, persistence ----
 const stopS = (msg, sid) => run('done-check.mjs', { session_id: sid, last_assistant_message: msg });
-const NEXT3 = "Done. Next, in order, I'd do A, B or C, because A blocks sign-ups. Which one?";
+const NEXT3 = "Done.\n1. Fix the mobile header. Needs nothing from Shaun.\n2. Re-check the pricing page. Needs nothing from Shaun.\nWhich numbers should I run?";
 task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] page loads', '[ ] mobile checked'] }); t('done claimed with an unticked Done means line -> block', decision(stopS('Done.', 'cb1')), 'block');
 task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['plain line with no checkbox'] }); t('Done means line without a tick -> block', decision(stopS('Done.', 'cb2')), 'block');
 task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] page loads', '[x] mobile checked'] }); t('all Done means ticked + evidence + PASS + next-3 -> allow', decision(stopS(NEXT3, 'cb3')), 'allow');
@@ -247,4 +248,26 @@ task('DONE', ['docs/**'], ['screenshot docs/notes/x.png'], 'PASS', { type: 'ANAL
 task('ACTIVE', ['src/pages/**'], [], ''); t('mid-task "Want me to fix it?" -> block', decision(stopS('The header is misaligned on mobile. Want me to fix it?', 'pm1')), 'block'); t('mid-task "Shall I proceed?" -> block', decision(stopS('I found two ways to do this. Shall I proceed?', 'pm2')), 'block');
 t('mid-task real decision question -> allow', decision(stopS('Should the price show monthly or yearly?', 'pm3')), 'allow'); t('mid-task named blocker -> allow', decision(stopS('Blocked on a login only you have: the PostHog dashboard. I tried the API key and the export link; both need your account.', 'pm4')), 'allow');
 task('NONE', [], [], ''); t('no active task: an offer is not blocked by this guard', decision(stopS('That is the plan. Want me to draft it?', 'pm5')), 'allow');
+// ---- additions: numbered list with no cap (autopilot off) and the autopilot-on path ----
+task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
+const L2 = '1. Fix the mobile header. Needs nothing from Shaun.\n2. Re-check the pricing page. Needs nothing from Shaun.';
+t('autopilot off: list with one of the two startable items -> block', decision(stopS('Done.\n1. Fix the mobile header. Needs nothing.\nWhich numbers should I run?', 'ap1')), 'block');
+t('autopilot off: both startable items listed but no "which numbers" -> block', decision(stopS(`Done.\n${L2}`, 'ap2')), 'block');
+t('autopilot off: both items listed and asks which numbers -> allow', decision(stopS(`Done.\n${L2}\nWhich numbers should I run?`, 'ap3')), 'allow');
+t('autopilot off: more items than needed, no cap -> allow', decision(stopS(`Done.\n${L2}\n3. Draft the sub-goals. Needs nothing.\n4. Audit the footer. Needs nothing.\n5. Check the 404 page. Needs nothing.\nWhich numbers should I run?`, 'ap4')), 'allow');
+t('autopilot off: an option that says pick something from the list -> block', decision(stopS(`Done.\n${L2}\n3. Pick something from the list.\nWhich numbers should I run?`, 'ap5')), 'block');
+fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Rotate the leaked token (Shaun's login only). | sub-goal: none\n\nParked ideas (not ranked):\n- x\n"); t('autopilot off: nothing startable, says so -> allow', decision(stopS('Done. Nothing on the list can start without you: the token rotation needs your login.', 'ap6')), 'allow'); t('autopilot off: nothing startable and says nothing about it -> block', decision(stopS('Done.', 'ap7')), 'block');
+fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Fix the mobile header. | sub-goal: 2\n2. Re-check the pricing page. | sub-goal: 5\n3. Rotate the leaked token (Shaun's login only). | sub-goal: none\n\nParked ideas (not ranked):\n- x\n");
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: true, maxHelpers: 6 }));
+t('autopilot on: DONE + PASS and ends with a question -> block', decision(stopS('Done. Want me to continue with item 1?', 'au1')), 'block'); t('autopilot on: DONE + PASS and just stops -> block', decision(stopS('Done.', 'au2')), 'block');
+t('autopilot on: nothing startable, says "Autopilot paused:" -> allow', decision(stopS('Autopilot paused: only items that need you are left.\n1. Rotate the leaked token. Needs your login.', 'au3')), 'allow');
+task('ACTIVE', ['src/pages/**'], [], ''); t('autopilot on: the next task already started (ACTIVE) is not forced again', decision(stopS('Started the next item: fixing the mobile header; the header file is open.', 'au4')), 'allow');
+// a question from Shaun is answered, not turned into new work or a forced list
+const tr = path.join(os.tmpdir(), 'ais-transcript-q.jsonl'); const asUser = (txt) => fs.writeFileSync(tr, JSON.stringify({ type: 'user', message: { role: 'user', content: txt } }) + '\n');
+task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
+asUser('What do you think about the pricing page?'); t('autopilot on: Shaun asked a question -> a plain answer is allowed', decision(run('done-check.mjs', { session_id: 'q1', last_assistant_message: 'My view: the card wording is clear.', transcript_path: tr })), 'allow');
+asUser('Do option 1 and keep going'); t('autopilot on: Shaun gave a command -> still must start the next task', decision(run('done-check.mjs', { session_id: 'q2', last_assistant_message: 'Done.', transcript_path: tr })), 'block');
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false }));
+asUser('Why is the header misaligned?'); t('autopilot off: Shaun asked a question -> a plain answer is allowed, no forced list', decision(run('done-check.mjs', { session_id: 'q3', last_assistant_message: 'Because the flex container has no gap.', transcript_path: tr })), 'allow');
+asUser('Go with the header fix'); t('autopilot off: Shaun gave a command -> list is still required', decision(run('done-check.mjs', { session_id: 'q4', last_assistant_message: 'Done.', transcript_path: tr })), 'block'); fs.rmSync(tr, { force: true });
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

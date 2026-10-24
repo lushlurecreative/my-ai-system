@@ -305,6 +305,7 @@ t('glob project: commit message that mentions a protected path and an arrow, not
 t('glob project bypass: bash heredoc writing a protected file -> deny', gRun('bash <<EOF\necho x > src/lib/pricing.ts\nEOF'), 'deny'); t('glob project bypass: $( ) in a commit message writing a protected file -> deny', gRun('git commit -m "$(echo x > src/lib/pricing.ts)"'), 'deny');
 t('glob project bypass: no-space redirect into a protected file -> deny', gRun('echo x>src/lib/pricing.ts'), 'deny'); t('glob project bypass: cat heredoc piped to bash writing a protected file -> deny', gRun('cat <<EOF | bash\necho x > src/lib/pricing.ts\nEOF'), 'deny');
 t('glob project legit: cat heredoc piped to git commit -F - naming a protected file -> allow', gRun('cat <<EOF | git commit -F -\nreword src/lib/pricing.ts -> ok\nEOF'), 'allow'); t('glob project legit: single-quoted commit message naming a protected file -> allow', gRun("git commit -m 'tweak src/lib/pricing.ts -> ok'"), 'allow');
+t('glob project bypass: bash -m with a hidden write to a protected file -> deny', gRun('bash -m "echo x > src/lib/pricing.ts"'), 'deny');
 for (const d of [G, gBare]) fs.rmSync(d, { recursive: true, force: true });
 const readGoCount = () => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/approvals.json'), 'utf8')).filter((x) => x.name === '__go__').length; } catch { return 0; } };
 // ---- additions: discussion mode (a real conversation; every edit block stays) ----
@@ -417,5 +418,15 @@ sysJson({}); startAuto('startup'); t('auto update: back on, the next fresh chat 
 fs.writeFileSync(path.join(P, '.claude/system-version'), '2999-01-01.1\n'); startAuto('startup'); t('auto update: never goes back to an older version', pver(), '2999-01-01.1');
 fs.rmSync(AU, { recursive: true, force: true });
 }
+// quoted text after a flag ending in m is dropped only for git commit / tag / merge
+t('bypass: bash -m with a hidden write in the quoted text -> deny', decision(bash('bash -m "echo x > PROTECTED.md"')), 'deny');
+t('bypass: eval --message with a hidden write -> deny', decision(bash('eval --message "echo x > PROTECTED.md"')), 'deny');
+t('bypass: python3 -am with a hidden write -> deny', decision(bash("python3 -am 'echo x > PROTECTED.md'")), 'deny');
+t('bypass: zsh -m copying into .claude/ -> deny', decision(bash("zsh -m 'cp /tmp/a .claude/hooks/x.mjs'")), 'deny');
+t('bypass: a git message does not shelter a later command in the same line -> deny', decision(bash('git commit -m "ok" && node -m "echo x > PROTECTED.md"')), 'deny');
+t('legit: git tag -m naming PROTECTED.md -> allow', decision(bash('git tag -m "release PROTECTED.md -> ok" v1')), 'allow');
+t('legit: git merge -m naming .claude/ -> allow', decision(bash('git merge -m "merge .claude/ notes -> ok" other')), 'allow');
+t('legit: git -C . commit -m naming PROTECTED.md -> allow', decision(bash('git -C . commit -m "touch PROTECTED.md wording -> ok"')), 'allow');
+t('legit: git commit with two -m messages naming protected files -> allow', decision(bash('git commit -m "a: CLAUDE.md -> ok" -m "b: PROTECTED.md > fine"')), 'allow');
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

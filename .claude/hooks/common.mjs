@@ -36,7 +36,7 @@ export function consumeGo(root) { const f = path.join(root, '.claude/approvals.j
 // Discussion mode: set only by approve.mjs from Shaun's own chat message; lapses after 24 hours so a forgotten flag cannot switch the stop checks off for long.
 export function discussionOn(root) { try { const d = JSON.parse(fs.readFileSync(path.join(root, '.claude/discussion.json'), 'utf8')); return Date.now() - Number(d.ts) < 24 * 3600 * 1000; } catch { return false; } }
 // Shell text with only provably inert text removed, so a name that appears only in a commit message or a data heredoc is not mistaken for a file the command writes.
-// Removed: a single-quoted -m message; a double-quoted -m message that has no $( or backtick (those can run); a heredoc body only when the heredoc feeds cat or git and is not piped on to a shell or interpreter; fd redirects (2>&1, >/dev/null).
+// Removed: the -m message of git commit, git tag or git merge only (never the quoted text after a flag on bash, sh, zsh, python, node, perl, ruby, eval or any other command), and only if it is single-quoted or has no $( or backtick (those can run); a heredoc body only when the heredoc feeds cat or git and is not piped on to a shell or interpreter; fd redirects (2>&1, >/dev/null).
 // Never removed: a heredoc body fed to bash, sh, zsh, python, node, perl, ruby (or piped into one), and anything containing $( or a backtick.
 const RUNS = /\|\s*(?:sudo\s+)?(?:bash|sh|zsh|dash|ksh|python3?|node|perl|ruby|php|eval|source|xargs|env)\b|\$\(|`/;
 export function stripInertHeredocs(text) {
@@ -54,6 +54,7 @@ export function stripInertHeredocs(text) {
   }
   return lines.length ? out.join('\n') : '';
 }
-export const quiet = (s) => stripInertHeredocs(String(s || '')).replace(/(\s-[a-zA-Z]*m|\s--message)(\s*=?\s*)("(?:[^"\\]|\\.)*"|'[^']*')/g, (m, flag, sp, body) => (body[0] === "'" || !/\$\(|`/.test(body)) ? `${flag}${sp}""` : m).replace(/\d*>&\d*|&?>>?\s*\/dev\/null/g, ' ');
+const GIT_MESSAGE_CMD = /^\s*(?:sudo\s+)?git\s+(?:-C\s+\S+\s+|-c\s+\S+\s+|--[\w-]+(?:=\S+)?\s+)*(?:commit|tag|merge)\b/;
+export const quiet = (s) => stripInertHeredocs(String(s || '')).replace(/(\s-[a-zA-Z]*m|\s--message)(\s*=?\s*)("(?:[^"\\]|\\.)*"|'[^']*')/g, (m, flag, sp, body, offset, whole) => (GIT_MESSAGE_CMD.test(whole.slice(0, offset).split(/&&|\|\||[;|&\n]/).pop()) && (body[0] === "'" || !/\$\(|`/.test(body))) ? `${flag}${sp}""` : m).replace(/\d*>&\d*|&?>>?\s*\/dev\/null/g, ' ');
 export function system(root) { try { return JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch { return {}; } }
 export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');

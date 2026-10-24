@@ -29,6 +29,7 @@ fs.writeFileSync(p,JSON.stringify({...d,...c})+"\n");' "$DST" "$SRC"
 cp "$SRC/VERSION" "$DST/.claude/system-version"
 touch "$DST/.gitignore"; grep -qx ".claude/approvals.json" "$DST/.gitignore" || echo ".claude/approvals.json" >> "$DST/.gitignore"
 grep -qx ".claude/discussion.json" "$DST/.gitignore" || echo ".claude/discussion.json" >> "$DST/.gitignore"
+for f in pending unlocks; do grep -qx ".claude/$f.json" "$DST/.gitignore" || echo ".claude/$f.json" >> "$DST/.gitignore"; done
 echo "Installed system $(cat "$SRC/VERSION") into $DST."
 [ -n "$NOTES" ] && printf "Needs attention:$NOTES\n"
 echo "Fill in: PROTECTED.md (first fill only: write a proposal to docs/notes/PROTECTED-PROPOSED.md and run bash ~/my-ai-system/scripts/set-protected.sh docs/notes/PROTECTED-PROPOSED.md), docs/PROJECT.md, docs/SUBGOALS.md, docs/NEXT.md, docs/TOOLBOX.md, docs/AGENTS.md. Shaun's decisions go in docs/RULINGS.md."

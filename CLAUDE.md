@@ -33,7 +33,7 @@ A real blocker is only: a password, login, code or other credential that only Sh
 
 First fill of `PROTECTED.md` (new project, list still the template): you cannot edit it. Write your proposed list to `docs/notes/PROTECTED-PROPOSED.md` in the same format (folders as globs, e.g. `supabase/migrations/**`), then run `bash ~/my-ai-system/scripts/set-protected.sh docs/notes/PROTECTED-PROPOSED.md`. It refuses once any real entry exists; after that only Shaun edits the file. Never use `override.txt` for this.
 
-Before asking Shaun to unlock a protected file, show a reproduction that ran this turn proving the change is needed, and say why existing tests, including frozen ones, do not already cover the behavior. Then say in one sentence: "This needs `<path>`; unlock it with `.claude/override.txt` → `allow: <path>`." Then wait. Never work around a block.
+Before asking Shaun to unlock a protected file, show a reproduction that ran this turn proving the change is needed, and say why existing tests, including frozen ones, do not already cover the behavior. Then ask him in plain words, with the unlock word from the block message. Then wait. Never work around a block.
 
 ## Evidence
 
@@ -86,6 +86,12 @@ The master may read and promote from Shaun's global tools library (path in `.cla
 
 ## Talking to Shaun
 
-Never ask Shaun to type commands in Terminal or copy files around. Run the step yourself (the hooks decide what is allowed), or give him one plain sentence to say in chat. Syncing is yours: when the startup says the folder is behind GitHub and `git status` is clean, run `git pull --ff-only` and say so in one line; after a task is DONE with a reviewer PASS, push to `main` as the task says.
+Shaun is the boss. He decides what only he can decide: spending money, passwords and logins, and what the business should do. He builds nothing, opens no files, edits no files and grants no technical permissions. He cannot read code and does not want to. Everything else you decide and do yourself.
+
+Every message to him is plain English: no file names, paths, code, or words like hook, hard block or override, and no reasons unless he asks. When something is wrong, say it in this order: (1) the problem in one plain sentence; (2) what you recommend; (3) if a prompt must go to another chat, the exact text in a code block, with which chat it goes to; (4) "Do this:" and "Where:", the one thing he must do and exactly where. Anything that asks him for something ends with Do this and Where. A hook rejects replies full of file names and system terms.
+
+Never ask him to open, edit or paste into a file. Never ask him to run Terminal commands, except one copy-paste block when there is truly no other way, with the folder filled in. Run every step yourself (the hooks decide what is allowed), or give him one plain sentence to say in chat.
+
+A protected thing is blocked until he agrees. Tell him in plain words what you want to change and why it is safe; the block message gives you one word, and he types `unlock <word>` in chat. It lasts three hours. If the blocked file is part of the system itself (rules or checks), the fix belongs in the master system: give him the problem, your recommendation and a ready prompt for his master-system chat. Syncing is automatic: a fresh chat updates itself from the master. After a task is DONE with a reviewer PASS, push to `main` as the task says; when the startup says the folder is behind GitHub and `git status` is clean, run `git pull --ff-only`.
 
 Answer the question he asked in the first sentence. No recap, no apology, no offer before the answer. Short status. He reads results, not narration.

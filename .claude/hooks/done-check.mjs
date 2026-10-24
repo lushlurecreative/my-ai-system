@@ -32,8 +32,17 @@ const CLAIM = /\b(?:task (?:is )?(?:done|complete)|all done|is (?:now )?fixed|fi
 export function reviewerRan(transcriptPath) {
   try { return fs.readFileSync(transcriptPath, 'utf8').split('\n').some((l) => { try { const d = JSON.parse(l); return d.type === 'assistant' && Array.isArray(d.message?.content) && d.message.content.some((b) => b.type === 'tool_use' && /^(Agent|Task)$/.test(b.name) && /reviewer/i.test(JSON.stringify(b.input || {}))); } catch { return false; } }); } catch { return true; }
 }
+// Shaun does not read code or system talk. A reply to him that is mostly file names, paths and system terms is rejected; it is rewritten in plain English.
+const JARGON = [/\.claude\b/ig, /\boverride(?:\.txt)?\b/ig, /\bhard[- ]?blocks?\b/ig, /\bhooks?\b/ig, /\bheredoc/ig, /\b(?:regex|allowlist|blocklist|stderr|stdout|exit code|protected-paths|scope-guard|done-check|settings\.json)\b/ig, /\b[\w-]+\.(?:mjs|cjs|jsx?|tsx?|json|sh|toml|sql|ya?ml|env|txt|md)\b/ig, /\b(?:src|docs|supabase|scripts|public|lib|components)\/[\w./-]+/ig];
+export function jargonHits(text) {
+  const prose = String(text || '').replace(/```[\s\S]*?```/g, ' '); const seen = new Set();
+  for (const re of JARGON) for (const m of prose.matchAll(re)) seen.add(m[0].toLowerCase());
+  return [...seen];
+}
+const ASKED_ABOUT_CODE = /\b(?:which|what) (?:files?|code|scripts?)\b|\bshow me (?:the )?(?:code|files?|diff)\b|\bthe code\b|\bwhich files?\b/i;
 export function judge(message, root, transcriptPath) {
   const text = String(message || '').replace(/[‘’]/g, "'").trim(); if (!text) return null;
+  const jh = jargonHits(text); if (jh.length >= 3 && !(transcriptPath && ASKED_ABOUT_CODE.test(lastUserText(transcriptPath)))) return `Your reply talks in file names and system terms (${jh.slice(0, 4).join(', ')}). Shaun does not read those and does not edit files. Rewrite it in plain English: the problem in one sentence, what you recommend, the exact text to paste and where (inside a code block), and the one thing he must do. No reasons unless he asked. Any pasting goes in a chat box; never ask him to open or edit a file.`;
   if (discussionOn(root)) return null; // discussion mode: a plain conversational reply is fine; the edit blocks still apply
   const last = text.slice(-700).split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || text.slice(-700);
   const spoken = last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ');

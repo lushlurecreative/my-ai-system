@@ -1,6 +1,6 @@
 # Protected files (fill in per project)
 
-Claude may never edit, overwrite, move or delete these, by any route (editor, shell, git, connector). Hooks deny it. To unlock one file for one session, Shaun creates `.claude/override.txt` containing `allow: <path>`. Folders work as globs (for example `supabase/migrations/**`). While this list is still the template, the project's chat proposes the list and `scripts/set-protected.sh` fills it once.
+Claude may never edit, overwrite, move or delete these, by any route (editor, shell, git, connector). Hooks deny it. To unlock one file, Shaun types `unlock <word>` in chat (Claude tells him the word); it lasts three hours. Folders work as globs (for example `supabase/migrations/**`). While this list is still the template, the project's chat proposes the list and `scripts/set-protected.sh` fills it once.
 
 ## Protected files
 - `(path/to/payments-or-checkout-code)`

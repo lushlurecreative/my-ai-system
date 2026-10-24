@@ -133,7 +133,7 @@ task('NONE', [], [], ''); t('no task: shell write to source -> deny', decision(b
 t('no task: record a ruling with the edit tool -> allow', decision(edit('docs/RULINGS.md')), 'allow'); t('no task: append a ruling by shell -> allow', decision(bash('echo "- 2026-10-09: x" >> docs/RULINGS.md')), 'allow');
 // rulings and startup warnings
 fs.writeFileSync(path.join(T, 'docs/RULINGS.md'), '# Rulings\n\n<!-- Format -->\n- 2026-10-09: the Alpha thing is parked on purpose.\n');
-const startup = (dir, input = {}) => execSync(`node "${dir}/.claude/hooks/session-start.mjs"`, { input: JSON.stringify({ source: 'startup', ...input }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+const startup = (dir, input = {}) => execSync(`node "${dir}/.claude/hooks/session-start.mjs"`, { input: JSON.stringify({ source: 'startup', ...input }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, AIS_NO_AUTOUPDATE: '1' } });
 const ctx = (o) => JSON.parse(o).hookSpecificOutput.additionalContext; const s1 = ctx(startup(T));
 t('startup shows the rulings', /Alpha thing is parked/.test(s1), true); t('startup says no task starts until go', /no task starts until Shaun says go/.test(s1), true); t('startup says archive is history', /docs\/archive\/.*history/.test(s1), true);
 t('startup shows the chat model when reported', /Chat model: claude-opus-5-5/.test(ctx(startup(T, { model: 'claude-opus-5-5' }))), true);
@@ -360,5 +360,62 @@ t('legit: git commit -F - heredoc whose text mentions PROTECTED.md and > -> allo
 t('legit: cat heredoc piped to git commit -F - -> allow', decision(bash('cat <<EOF | git commit -F -\nsee PROTECTED.md > x\nEOF')), 'allow');
 t('legit: git commit -am with a message naming CLAUDE.md -> allow', decision(bash('git commit -am "tweak CLAUDE.md wording"')), 'allow');
 t('legit: cat heredoc into a normal notes file -> allow', decision(bash('cat <<EOF > docs/notes/a.md\nsee PROTECTED.md > x\nEOF')), 'allow');
+// ---- additions: plain words (stop check), typed unlock, automatic update ----
+{
+task('NONE', ['src/pages/**'], [], ''); fs.rmSync(dflag, { force: true });
+const jargon = 'I changed src/lib/pricing.ts and scope-guard.mjs, and the hook under .claude/hooks blocked the write, so I needed an override.';
+t('plain words: a reply full of file names and system terms -> block', decision(stopS(jargon, 'pw1')), 'block');
+t('plain words: the same news in plain English -> allow', decision(stopS('The price page now shows the savings first. Nothing else changed.', 'pw2')), 'allow');
+t('plain words: file names inside a paste-ready code block are fine -> allow', decision(stopS('Paste this into the chat:\n```\nFix src/lib/pricing.ts and scope-guard.mjs under .claude/hooks\n```\nThat is all you need to do.', 'pw3')), 'allow');
+asUser('Which files did you change?'); t('plain words: Shaun asked which files -> file names allowed', decision(run('done-check.mjs', { session_id: 'pw4', last_assistant_message: jargon, transcript_path: tr })), 'allow'); fs.rmSync(tr, { force: true });
+fs.writeFileSync(dflag, JSON.stringify({ ts: Date.now() })); t('plain words: also applies in discussion mode -> block', decision(stopS(jargon, 'pw5')), 'block'); fs.rmSync(dflag, { force: true });
+// typed unlock
+const UL = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-unlock-')); execSync(`bash "${SRC}/install.sh" "${UL}"`, { stdio: 'ignore' });
+fs.writeFileSync(path.join(UL, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/lib/pricing.ts`\n- `supabase/migrations/**`\n\n## Protected database functions\n- `is_admin`\n\n## Protected words\n- `checkout`\n');
+const uHook = (hook, ti, name = 'Edit') => { const o = execSync(`node "${UL}/.claude/hooks/${hook}"`, { input: JSON.stringify({ cwd: UL, tool_name: name, tool_input: ti }), encoding: 'utf8' }); return o ? JSON.parse(o) : null; };
+const uEdit = (p) => uHook('scope-guard.mjs', { file_path: path.join(UL, p) }); const uReason = (r) => r?.hookSpecificOutput?.permissionDecisionReason || '';
+const uAppr = (prompt) => { const o = execSync(`node "${UL}/.claude/hooks/approve.mjs"`, { input: JSON.stringify({ cwd: UL, prompt }), encoding: 'utf8' }); return o ? JSON.parse(o).hookSpecificOutput.additionalContext : ''; };
+const pendingKeys = () => { try { return JSON.parse(fs.readFileSync(path.join(UL, '.claude/pending.json'), 'utf8')).map((x) => x.key); } catch { return []; } };
+let r1 = uEdit('src/lib/pricing.ts'); t('unlock: a protected file is blocked', decision(r1), 'deny'); t('unlock: the block message names the one word to type', /unlock pricing/.test(uReason(r1)), true);
+t('unlock: the block recorded a pending request', pendingKeys().includes('pricing'), true);
+t('unlock: a system file is blocked with a plain pointer to the master system', decision(uEdit('CLAUDE.md')), 'deny'); t('unlock: system files never get an unlock word', /type: unlock/.test(uReason(uEdit('CLAUDE.md'))) || !/master system/.test(uReason(uEdit('CLAUDE.md'))), false);
+t('unlock: a longer sentence containing "unlock pricing" does not unlock', (uAppr('Do not unlock pricing yet'), decision(uEdit('src/lib/pricing.ts'))), 'deny');
+uAppr('unlock'); t('unlock: a bare "unlock" with one thing waiting unlocks it', decision(uEdit('src/lib/pricing.ts')), 'allow');
+t('unlock: a system file stays blocked even after unlock all', (uEdit('CLAUDE.md'), uAppr('unlock all'), decision(uEdit('CLAUDE.md'))), 'deny');
+fs.rmSync(path.join(UL, '.claude/unlocks.json'), { force: true }); fs.rmSync(path.join(UL, '.claude/pending.json'), { force: true });
+uEdit('src/lib/pricing.ts'); uEdit('supabase/migrations/001.sql'); t('unlock: two things waiting are both recorded', pendingKeys().sort().join(','), 'migrations,pricing');
+uAppr('unlock'); t('unlock: a bare "unlock" with two waiting does nothing', decision(uEdit('src/lib/pricing.ts')), 'deny');
+uAppr('unlock migrations'); t('unlock: "unlock migrations" opens only the migrations folder', decision(uEdit('supabase/migrations/001.sql')), 'allow'); t('unlock: and not the pricing file', decision(uEdit('src/lib/pricing.ts')), 'deny');
+fs.writeFileSync(path.join(UL, '.claude/unlocks.json'), JSON.stringify([{ kind: 'file', value: 'src/lib/pricing.ts', ts: Date.now() - 4 * 3600 * 1000 }])); t('unlock: lapses after 3 hours', decision(uEdit('src/lib/pricing.ts')), 'deny');
+fs.writeFileSync(path.join(UL, '.claude/pending.json'), JSON.stringify([{ kind: 'file', value: 'src/lib/pricing.ts', key: 'pricing', ts: Date.now() - 40 * 60 * 1000 }])); uAppr('unlock pricing'); t('unlock: a request older than 30 minutes cannot be unlocked', decision(uEdit('src/lib/pricing.ts')), 'deny');
+fs.rmSync(path.join(UL, '.claude/pending.json'), { force: true }); fs.rmSync(path.join(UL, '.claude/unlocks.json'), { force: true });
+t('unlock: nothing waiting -> Claude is told to ask again in plain words', /nothing is waiting/.test(uAppr('unlock pricing')), true);
+const uShell = (c) => uHook('protected-paths.mjs', { command: c }, 'Bash'); const uMsg = (m) => uHook('protected-paths.mjs', { message: m }, 'mcp__Lovable__send_message');
+t('unlock: a shell write to a protected file is blocked and names the word', (r1 = uShell('echo x > src/lib/pricing.ts'), decision(r1) === 'deny' && /unlock pricing/.test(uReason(r1))), true);
+uAppr('unlock pricing'); t('unlock: after unlock the shell write is allowed', decision(uShell('echo x > src/lib/pricing.ts')), 'allow');
+t('unlock: a connector message with a protected word is blocked and names the word', (r1 = uMsg('Change the checkout button colour'), decision(r1) === 'deny' && /unlock checkout/.test(uReason(r1))), true);
+uAppr('unlock checkout'); t('unlock: after unlock the message is allowed', decision(uMsg('Change the checkout button colour')), 'allow');
+fs.rmSync(UL, { recursive: true, force: true });
+// automatic update
+const AU = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-auto-')); const M0 = path.join(AU, 'm0'); const B = path.join(AU, 'bare.git'); const M = path.join(AU, 'master'); const M2 = path.join(AU, 'master2'); const P = path.join(AU, 'proj');
+fs.cpSync(SRC, M0, { recursive: true, filter: (f) => !/\/(\.git|node_modules)(\/|$)/.test(f) });
+const sh = (c, cwd) => execSync(c, { cwd, stdio: 'ignore' });
+sh('git init -q -b main && git config user.email t@t && git config user.name t && git add -A && git commit -q -m base', M0); sh(`git clone -q --bare "${M0}" "${B}"`, AU); sh(`git clone -q "${B}" "${M}" && git clone -q "${B}" "${M2}"`, AU);
+fs.mkdirSync(P); execSync(`bash "${M}/install.sh" "${P}"`, { stdio: 'ignore' }); sh('git init -q -b main', P);
+const bump = (v) => { fs.writeFileSync(path.join(M2, 'VERSION'), v + '\n'); sh(`git config user.email t@t && git config user.name t && git add -A && git commit -q -m bump && git push -q origin main`, M2); };
+const sysJson = (o) => fs.writeFileSync(path.join(P, '.claude/system.json'), JSON.stringify({ autopilot: true, maxHelpers: 6, masterPath: M, ...o }));
+const startAuto = (source) => execSync(`node "${P}/.claude/hooks/session-start.mjs"`, { input: JSON.stringify({ source }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: P, AIS_NO_AUTOUPDATE: '' } });
+const pver = () => fs.readFileSync(path.join(P, '.claude/system-version'), 'utf8').trim();
+fs.writeFileSync(path.join(P, 'docs/RULINGS.md'), '# Rulings\n\n- 2026-10-24: keep this line.\n'); fs.writeFileSync(path.join(P, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/keep.ts`\n');
+sysJson({}); bump('2099-01-01.1'); const out1 = startAuto('startup');
+t('auto update: a fresh chat pulls the master and installs the newer version', pver(), '2099-01-01.1'); t('auto update: Claude is told about it in the session text', /updated itself from .* to 2099-01-01\.1/.test(JSON.parse(out1).hookSpecificOutput.additionalContext), true);
+t('auto update: the project\'s own rulings, protected list and settings are kept', fs.readFileSync(path.join(P, 'docs/RULINGS.md'), 'utf8').includes('keep this line') && fs.readFileSync(path.join(P, 'PROTECTED.md'), 'utf8').includes('src/keep.ts') && JSON.parse(fs.readFileSync(path.join(P, '.claude/system.json'), 'utf8')).autopilot === true, true);
+bump('2099-01-01.2'); startAuto('resume'); t('auto update: a resumed chat does not update', pver(), '2099-01-01.1');
+sysJson({ autoUpdate: false }); startAuto('startup'); t('auto update: autoUpdate false switches it off', pver(), '2099-01-01.1');
+sysJson({ masterPath: path.join(AU, 'nowhere') }); const out2 = startAuto('startup'); t('auto update: no master folder -> silent, no failure line', /update failed/.test(JSON.parse(out2).hookSpecificOutput.additionalContext), false);
+sysJson({}); startAuto('startup'); t('auto update: back on, the next fresh chat picks up the newer version', pver(), '2099-01-01.2');
+fs.writeFileSync(path.join(P, '.claude/system-version'), '2999-01-01.1\n'); startAuto('startup'); t('auto update: never goes back to an older version', pver(), '2999-01-01.1');
+fs.rmSync(AU, { recursive: true, force: true });
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

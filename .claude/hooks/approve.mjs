@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // UserPromptSubmit: when Shaun types "yes, install X" (or "install: X") in chat, record the approval. The harness runs this only on HIS messages, so Claude cannot forge it.
 // scope-guard.mjs reads .claude/approvals.json. Approvals last 24 hours. Fails open (no approval) on any error.
-import fs from 'node:fs'; import path from 'node:path';
+import fs from 'node:fs'; import path from 'node:path'; import { grantUnlock } from './override.mjs';
 export function parse(prompt) {
   const p = String(prompt || '').trim(); if (!p || p.length > 300) return [];
   const m = p.match(/^\s*(?:yes|yep|yeah|ok|okay|approved?)\b[\s,.!:-]*install\s+(.+?)\s*[.!]?\s*$/i) || p.match(/^\s*install:\s*(.+?)\s*$/i);
@@ -37,6 +37,9 @@ export function setDiscussion(root, on) {
   if (on) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify({ ts: Date.now() })); } else fs.rmSync(f, { force: true });
 }
 const discussionWas = (root) => fs.existsSync(path.join(root, '.claude/discussion.json'));
+// "unlock pricing" / "yes, unlock" at the START of a short message of his own. The word comes from the block message Claude saw.
+const UNLOCK = /^\s*(?:(?:yes|yep|yeah|ok|okay|sure)\b[\s,.!:-]*)?unlock(?:\s+(?:the\s+)?([\w.\-/]+))?\s*[.!]?\s*$/i;
+export function parseUnlock(prompt) { const p = String(prompt || '').trim().replace(/^[\s"'`>*\u201c-]+/, ''); if (!p || p.length > 120) return null; const m = p.match(UNLOCK); return m ? { word: (m[1] || '').replace(/^.*\//, '').replace(/\.[^.]*$/, '') } : null; }
 export function record(root, names) {
   const f = path.join(root, '.claude/approvals.json'); let cur = []; try { cur = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
   const now = Date.now(); const keep = (Array.isArray(cur) ? cur : []).filter((x) => x && now - Number(x.ts) < 24 * 3600 * 1000 && !(names.includes('__go__') && x.name === '__go__'));
@@ -46,6 +49,8 @@ export function record(root, names) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); const root = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(); const names = [...parse(input.prompt), ...parseAgents(input.prompt)]; const notes = [];
+    const unl = parseUnlock(input.prompt);
+    if (unl) { const got = grantUnlock(root, unl.word); notes.push(got.length ? `Shaun unlocked ${got.map((x) => x.value).join(', ')} for 3 hours. Make exactly the change you described, nothing more, then tell him in plain words that it is done. Do not mention files or code to him.` : 'Shaun typed unlock, but nothing is waiting for that word. Ask again in plain words, and give him the exact word to type (the block message names it).'); }
     const disc = parseDiscuss(input.prompt);
     if (disc === 'on') { setDiscussion(root, true); notes.push('Discussion mode is ON (Shaun asked for it). Talk with him like a thoughtful partner: read files, code and read-only data freely to ground what you say, give your view and a clear recommendation (not a menu of options), and end however is natural, including a question. Change no files and send no connector messages; the hooks block them. Write no task card, no Done. line, no NEXT.md list. Do not open with a generic question like "what do you want to talk about". If he gave no topic, say in one line that discussion mode is on and that "go" or "task mode" leaves it, then stop. If he did give a topic, answer it. Do not mention your own pending work, unpushed changes, reviewers or "say go to push" unless he asks or it directly bears on what he raised. If he states a decision, you may append it to docs/RULINGS.md.'); }
     else if (disc === 'off') { setDiscussion(root, false); notes.push('Discussion mode is OFF (Shaun ended it). Task rules apply again.'); }

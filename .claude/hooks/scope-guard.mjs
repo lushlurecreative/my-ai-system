@@ -2,16 +2,16 @@
 // PreToolUse: one task at a time, enforced. Decisions are DENY (in auto mode an "ask" is answered by the machine). Fails open on crash.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
-import { isOverridden } from './override.mjs';
+import { isOverridden, unlockHint } from './override.mjs';
 import { deny, rel, readTask, readToolbox, readApprovals, readGo, consumeGo, system, globRe, discussionOn, quiet, stripInertHeredocs } from './common.mjs';
 const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS)\.md$/, /^docs\/notes\//];
 export function checkEdit(root, filePath) {
   const r = rel(root, filePath);
   if (r.startsWith('..')) return deny(`Edits outside the project (${r}) are not allowed.`);
   const am = r.match(/^\.claude\/agents\/([\w-]+)\.md$/); if (am && readApprovals(root).includes('agent:' + am[1].toLowerCase())) return null;
-  if (SELF.includes(r) || SELF_DIRS.some((d) => r.startsWith(d))) return isOverridden(root, r) ? null : deny(`${r} is the system's own rules/hooks. Only Shaun edits these (unlock: .claude/override.txt "allow: ${r}").`);
+  if (SELF.includes(r) || SELF_DIRS.some((d) => r.startsWith(d))) return isOverridden(root, r) ? null : deny(`${r} belongs to the system itself. You cannot change it and Shaun does not unlock it in chat. The fix belongs in the master system: tell Shaun in plain English the problem, what you recommend, and give him a ready prompt to paste into his master-system chat. No file names or code terms in your message to him.`);
   const P = lists(root);
-  if (P.files.some((f) => r === f || globRe(f).test(r))) return isOverridden(root, r) ? null : deny(`${r} is PROTECTED (PROTECTED.md). Hard block. Tell Shaun in one sentence what change you need; he unlocks with .claude/override.txt "allow: ${r}".`);
+  if (P.files.some((f) => r === f || globRe(f).test(r))) return isOverridden(root, r) ? null : deny(`${r} is PROTECTED (PROTECTED.md). Hard stop until Shaun agrees. ${unlockHint(root, 'file', P.files.find((f) => r === f || globRe(f).test(r)) || r)}`);
   if (/^supabase\/migrations\/.+\.sql$/.test(r) || /migrations\/.+\.sql$/.test(r)) { /* migration content is checked by protected-paths */ }
   if (discussionOn(root) && !(r === 'docs/RULINGS.md' || /^docs\/notes\//.test(r))) return deny(`Discussion mode is on: no files change until Shaun says go (or "task mode"). Give your view in chat. Only docs/RULINGS.md (his decisions) and docs/notes/ can be written now.`);
   if (ALWAYS_OK.some((x) => x.test(r))) return null;

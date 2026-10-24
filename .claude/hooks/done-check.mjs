@@ -2,7 +2,7 @@
 // Stop hook. (1) Ends by announcing work -> block (max 2 in a row per reason). (2) Claims done but TASK.md lacks Evidence or Reviewer PASS, or the reviewer agent never ran this session -> block once.
 // (1b) Asks permission to continue mid-task -> block. (1c) Claims done with unticked Done means, or an ANALYSIS with an open Scope ledger -> block. (3) TASK is DONE with a reviewer PASS: autopilot off needs a numbered list of every NEXT item that can start now plus "which numbers"; autopilot on needs the next task started, not a question. Fails open.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
-import { readTask, system } from './common.mjs';
+import { readTask, system, discussionOn } from './common.mjs';
 const NEEDS_SHAUN = /\bShaun(?:'s)?\b[^|]{0,60}\b(?:action|login|logins|decision|decides|decide|spend|approval|authoriz\w+|unlock|setup|set up|sign-in|only|led)\b|\bneeds? (?:Shaun|your)\b|\b(?:logins?|credentials?|rotate|spend|admin sign-in)\b|\bseparately authorized\b|\bparked\b|\byou(?:r|'ll|'d)?\b|\btype "yes|\bsay (?:when|anything)\b/i;
 export function startableItems(root) {
   let t = ''; try { t = fs.readFileSync(path.join(root, 'docs/NEXT.md'), 'utf8'); } catch { return []; }
@@ -34,6 +34,7 @@ export function reviewerRan(transcriptPath) {
 }
 export function judge(message, root, transcriptPath) {
   const text = String(message || '').replace(/[‘’]/g, "'").trim(); if (!text) return null;
+  if (discussionOn(root)) return null; // discussion mode: a plain conversational reply is fine; the edit blocks still apply
   const last = text.slice(-700).split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || text.slice(-700);
   const spoken = last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ');
   if (!HANDOFF.test(last) && ANNOUNCE.test(spoken)) return `Your reply ends by announcing work ("${spoken.match(ANNOUNCE)[0]}") instead of doing it. Do it now, or end in a valid stop: done with evidence plus the numbered list (autopilot off) or the next task started (autopilot on), a question only Shaun can answer, or a named blocker.`;

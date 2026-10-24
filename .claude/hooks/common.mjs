@@ -33,5 +33,9 @@ export function readApprovals(root) {
 const GO_MS = 6 * 3600 * 1000;
 export function readGo(root) { try { const a = JSON.parse(fs.readFileSync(path.join(root, '.claude/approvals.json'), 'utf8')); const now = Date.now(); return (Array.isArray(a) ? a : []).filter((x) => x && x.name === '__go__' && now - Number(x.ts) < GO_MS); } catch { return []; } }
 export function consumeGo(root) { const f = path.join(root, '.claude/approvals.json'); try { const a = JSON.parse(fs.readFileSync(f, 'utf8')); const now = Date.now(); const i = (Array.isArray(a) ? a : []).findIndex((x) => x && x.name === '__go__' && now - Number(x.ts) < GO_MS); if (i < 0) return; a.splice(i, 1); fs.writeFileSync(f, JSON.stringify(a)); } catch { /* nothing to consume */ } }
+// Discussion mode: set only by approve.mjs from Shaun's own chat message; lapses after 24 hours so a forgotten flag cannot switch the stop checks off for long.
+export function discussionOn(root) { try { const d = JSON.parse(fs.readFileSync(path.join(root, '.claude/discussion.json'), 'utf8')); return Date.now() - Number(d.ts) < 24 * 3600 * 1000; } catch { return false; } }
+// Text of a shell command with commit messages, heredoc bodies and fd redirects (2>&1, >/dev/null) removed, so a name that only appears in a message is not mistaken for a file the command writes.
+export const quiet = (s) => String(s || '').replace(/(\s(?:-m|--message)\s*=?\s*)("(?:[^"\\]|\\.)*"|'[^']*')/g, '$1""').replace(/<<-?\s*(['"]?)(\w+)\1([^\n]*)\n[\s\S]*?\n\s*\2\b/g, ' $3 ').replace(/\d*>&\d*|&?>>?\s*\/dev\/null/g, ' ');
 export function system(root) { try { return JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch { return {}; } }
 export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');

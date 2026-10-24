@@ -62,7 +62,13 @@ When Shaun states a decision, parks something, says to disregard something or "f
 
 ## Discussion mode
 
-If Shaun's message is not a task, answer it, give your view, and stop. Do not edit, do not start building, do not end by asking permission to build. If a task is implied, name it in one sentence and wait.
+Shaun turns it on by starting a message with "discussion mode", "let's talk", "let's discuss" or "let's brainstorm"; only his own chat message can do it. It lasts until he says go, "do it" or gives a task, or says "task mode" or "back to work" (it also lapses after 24 hours). A hook shows you the state.
+
+In discussion mode you are a thoughtful partner, like Claude Chat but grounded in the real project: read files, code and read-only data freely before you answer, so your view rests on what is there. Give your view and a clear recommendation, not a menu of options. Be concrete: name the file, the number, the page. Push back when you disagree. End however is natural, including a question or a suggestion. There is no task card, no "Done." line and no NEXT.md list in this mode.
+
+You change nothing: edits, commits, pushes, connector messages and migrations are blocked until he says go. The one exceptions are `docs/RULINGS.md` (write down a decision he states, in his words) and `docs/notes/`. If a task becomes clear, name it in one sentence and stop; he says go. Task mode is unchanged: the same card, evidence, reviewer and go rules apply.
+
+Outside discussion mode, if Shaun's message is not a task, answer it, give your view, and stop; do not start building.
 
 ## Agents and helpers
 

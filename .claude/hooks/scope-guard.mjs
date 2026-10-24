@@ -3,7 +3,7 @@
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden } from './override.mjs';
-import { deny, rel, readTask, readToolbox, readApprovals, readGo, consumeGo, system, globRe } from './common.mjs';
+import { deny, rel, readTask, readToolbox, readApprovals, readGo, consumeGo, system, globRe, discussionOn, quiet } from './common.mjs';
 const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS)\.md$/, /^docs\/notes\//];
 export function checkEdit(root, filePath) {
   const r = rel(root, filePath);
@@ -13,6 +13,7 @@ export function checkEdit(root, filePath) {
   const P = lists(root);
   if (P.files.some((f) => r === f || globRe(f).test(r))) return isOverridden(root, r) ? null : deny(`${r} is PROTECTED (PROTECTED.md). Hard block. Tell Shaun in one sentence what change you need; he unlocks with .claude/override.txt "allow: ${r}".`);
   if (/^supabase\/migrations\/.+\.sql$/.test(r) || /migrations\/.+\.sql$/.test(r)) { /* migration content is checked by protected-paths */ }
+  if (discussionOn(root) && !(r === 'docs/RULINGS.md' || /^docs\/notes\//.test(r))) return deny(`Discussion mode is on: no files change until Shaun says go (or "task mode"). Give your view in chat. Only docs/RULINGS.md (his decisions) and docs/notes/ can be written now.`);
   if (ALWAYS_OK.some((x) => x.test(r))) return null;
   const t = readTask(root);
   if (t.status !== 'ACTIVE') return deny(`No ACTIVE task in docs/TASK.md (status ${t.status}). Write the task there first (one task, questions, allowed paths, done-means), get Shaun's answers, set Status: ACTIVE, then edit code.`);
@@ -74,13 +75,16 @@ export function checkBash(root, cmd) {
   const c = String(cmd || '');
   const inst = checkInstall(root, c); if (inst) return inst;
   if (/TASK\.md/.test(c) && /Status:\s*ACTIVE/i.test(c) && /(>>?|\btee\b|\bsed\s+-\w*i|\bpython3?\b|\bnode\b|\bperl\b|\bawk\b)/.test(c)) { const g = gateActivation(root, c); if (g) return g; }
+  if (discussionOn(root) && /\bgit\s+(?:commit|push|add|merge|rebase|stash|tag|cherry-pick)\b/.test(c)) return deny('Discussion mode is on: no commits or pushes until Shaun says go (or "task mode").');
   if (/\bgit\s+push\b/.test(c)) {
     if (/\s(-f|--force|--force-with-lease)\b|\s\+\w/.test(c)) return deny('Force push is never allowed.');
     const toMain = /\bmain\b|\bmaster\b/.test(c) || !/\bgit\s+push\s+\S+\s+\S+/.test(c);
     if (toMain) { const t = readTask(root); if (t.status !== 'DONE' || t.evidence === 0 || !/PASS/i.test(t.verdict)) return deny(`Push to main is allowed only when docs/TASK.md is DONE with Evidence and a Reviewer verdict PASS (now: ${t.status}, ${t.evidence} evidence lines, verdict "${t.verdict || 'none'}").`); }
   }
   if (/\brm\s+-[a-zA-Z]*r[a-zA-Z]*f|\brm\s+-[a-zA-Z]*f[a-zA-Z]*r|\bgit\s+reset\s+--hard|\bgit\s+checkout\s+--\s+\.|\bgit\s+clean\s+-[a-zA-Z]*f|\bdb\s+reset\b|\bdrop\s+(table|schema|database)\b|\btruncate\s+table\b/i.test(c)) return deny('Destructive command blocked (rm -rf, git reset --hard, git clean, db reset, DROP, TRUNCATE). Ask Shaun.');
-  if ([...SELF, ...SELF_DIRS].some((s) => c.includes(s)) && /(>>?|\btee\b|\bsed\s+-i|\bmv\b|\bcp\b|\brm\b|<<|\bwriteFile)/.test(c)) return deny('Shell writes to CLAUDE.md, PROTECTED.md or .claude/ are not allowed. Only Shaun edits the rules.');
+  const q = quiet(c); const mentionsSelf = (x) => [...SELF, ...SELF_DIRS].some((s) => x.includes(s));
+  const redirectToSelf = [...q.matchAll(/(?<![\w&])\d?>>?(?!&)\s*["']?([^\s;&|<>()"']+)/g)].some((m) => mentionsSelf(m[1]));
+  if (redirectToSelf || (mentionsSelf(q) && /(\btee\b|\bsed\s+-i|\bmv\b|\bcp\b|\brm\b|<<)/.test(q)) || (mentionsSelf(c) && /\bwriteFile/.test(c))) return deny('Shell writes to CLAUDE.md, PROTECTED.md or .claude/ are not allowed. Only Shaun edits the rules.');
   return checkShellWrites(root, c);
 }
 export function check(input) {

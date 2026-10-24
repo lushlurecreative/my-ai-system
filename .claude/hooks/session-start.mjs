@@ -12,7 +12,7 @@ const updateCheck = () => {
     let sys = {}; try { sys = JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch {}
     if (sys.checkForUpdates === false) return null;
     const master = masterPathOf(root);
-    if (!fs.existsSync(path.join(master, 'install.sh')) || path.resolve(master) === path.resolve(root)) return null;
+    if (!verifyMaster(process.env.CLAUDE_PROJECT_DIR || root, master).ok) return null;
     try { execFileSync('git', ['-C', master, 'fetch', '-q'], { timeout: 12000, stdio: 'ignore' }); } catch { /* offline: compare with what is there */ }
     let want = ''; try { want = execFileSync('git', ['-C', master, 'show', '@{upstream}:VERSION'], { timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { try { want = fs.readFileSync(path.join(master, 'VERSION'), 'utf8').trim(); } catch {} }
     let have = '0'; try { have = fs.readFileSync(path.join(root, '.claude/system-version'), 'utf8').trim(); } catch {}
@@ -24,7 +24,7 @@ const updated = upd ? `A system update is available (${upd.have} to ${upd.want})
 const behind = (() => { if (sh('git rev-parse --is-inside-work-tree') !== 'true') return ''; sh('git fetch --quiet origin'); const n = Number(sh('git rev-list --count HEAD..@{upstream}')); return Number.isFinite(n) && n > 0 ? `WARNING: this folder is ${n} commit${n > 1 ? 's' : ''} behind GitHub. If git status is clean, run git pull --ff-only yourself now and say so in one line. If there are uncommitted changes, tell Shaun first. Do not work from stale files.` : ''; })();
 const noVersion = fs.existsSync(path.join(root, '.claude/system-version')) ? '' : 'WARNING: .claude/system-version is missing, so the system may be half installed or an old copy. Tell Shaun first.';
 const model = input.model || input.model_name || process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL || '';
-import { discussionOn, verNewer, masterPathOf } from './common.mjs';
+import { discussionOn, verNewer, masterPathOf, verifyMaster } from './common.mjs';
 const disc = discussionOn(root);
 let auto = false; try { auto = !!JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')).autopilot; } catch {}
 const out = [

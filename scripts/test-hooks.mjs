@@ -407,7 +407,7 @@ t('unlock: there is no "unlock all"', (uAppr('unlock all'), decision(uEdit('src/
 const other = pendingKeys().find((k) => k !== 'pricing'); uAppr(`unlock ${other}`); t('unlock: the second file is opened by its own word', decision(uEdit('src/server/pricing.ts')), 'allow');
 fs.rmSync(UL, { recursive: true, force: true });
 // automatic update
-const AU = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-auto-')); const M0 = path.join(AU, 'm0'); const B = path.join(AU, 'bare.git'); const M = path.join(AU, 'master'); const M2 = path.join(AU, 'master2'); const P = path.join(AU, 'proj');
+const AU = fs.mkdtempSync(path.join(os.homedir(), '.ais-auto-')); const M0 = path.join(AU, 'm0'); const B = path.join(AU, 'bare.git'); const M = path.join(AU, 'master'); const M2 = path.join(AU, 'master2'); const P = path.join(AU, 'proj');
 fs.cpSync(SRC, M0, { recursive: true, filter: (f) => !/\/(\.git|node_modules)(\/|$)/.test(f) });
 const sh = (c, cwd) => execSync(c, { cwd, stdio: 'ignore' });
 sh('git init -q -b main && git config user.email t@t && git config user.name t && git add -A && git commit -q -m base', M0); sh(`git clone -q --bare "${M0}" "${B}"`, AU); sh(`git clone -q "${B}" "${M}" && git clone -q "${B}" "${M2}"`, AU);
@@ -418,7 +418,8 @@ const startAuto = (source) => execSync(`node "${P}/.claude/hooks/session-start.m
 const pver = () => fs.readFileSync(path.join(P, '.claude/system-version'), 'utf8').trim();
 fs.writeFileSync(path.join(P, 'docs/RULINGS.md'), '# Rulings\n\n- 2026-10-24: keep this line.\n'); fs.writeFileSync(path.join(P, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/keep.ts`\n');
 const noticeOf = (out) => JSON.parse(out); const hasNotice = (out) => /update is available/.test(noticeOf(out).hookSpecificOutput.additionalContext);
-const upd = (prompt) => { const o = execSync(`node "${P}/.claude/hooks/approve.mjs"`, { input: JSON.stringify({ cwd: P, prompt }), encoding: 'utf8' }); return o ? JSON.parse(o) : {}; };
+const updEnv = (project, cwd, prompt) => { const env = { ...process.env, AIS_NO_AUTOUPDATE: '' }; if (project) env.CLAUDE_PROJECT_DIR = project; else delete env.CLAUDE_PROJECT_DIR; const o = execSync(`node "${P}/.claude/hooks/approve.mjs"`, { input: JSON.stringify({ cwd, prompt }), encoding: 'utf8', env }); return o ? JSON.parse(o) : {}; };
+const upd = (prompt) => updEnv(P, P, prompt);
 const v0 = pver(); sysJson({}); bump('2099-01-01.1'); const out1 = startAuto('startup');
 t('update: a fresh chat only reports that an update exists; nothing is installed', pver(), v0);
 t('update: Claude is told to ask for "yes, update" and not to run the installer', hasNotice(out1) && /yes, update/.test(noticeOf(out1).hookSpecificOutput.additionalContext) && /do not run the installer/.test(noticeOf(out1).hookSpecificOutput.additionalContext), true);
@@ -436,6 +437,25 @@ t('update: asking again says it is already on the latest version', /already on t
 bump('2099-01-01.2'); t('update: the next fresh chat reports the newer one', hasNotice(startAuto('startup')), true);
 upd('Yes, update the system.'); t('update: "Yes, update the system." also works', pver(), '2099-01-01.2');
 fs.writeFileSync(path.join(P, '.claude/system-version'), '2999-01-01.1\n'); t('update: never offers an older version', hasNotice(startAuto('startup')), false); t('update: "yes, update" never goes back to an older version', (upd('yes, update'), pver()), '2999-01-01.1');
+// refusals: the update stops, nothing is installed, nothing falls back to "use what is there"
+fs.writeFileSync(path.join(P, '.claude/system-version'), '2026-01-01.1\n'); sysJson({}); const vOld = pver();
+const refused = (label, ru) => { t(`update refused: ${label}: version unchanged`, pver(), vOld); t(`update refused: ${label}: Shaun is told it stopped`, /stopped/.test(ru.systemMessage || ''), true); };
+const withMaster = (dir, fn) => { sysJson({ masterPath: dir }); const ru = upd('yes, update'); fn(ru); sysJson({}); };
+refused('the project folder is not in the trusted setting', updEnv(null, P, 'yes, update'));
+const Q = path.join(AU, 'other'); fs.mkdirSync(Q); execSync(`bash "${M}/install.sh" "${Q}"`, { stdio: 'ignore' }); fs.writeFileSync(path.join(Q, '.claude/system-version'), '2026-01-01.1\n');
+sysJson({}); fs.writeFileSync(path.join(Q, '.claude/system.json'), JSON.stringify({ masterPath: M })); updEnv(P, Q, 'yes, update'); t('update: the folder a chat reports is ignored; only the trusted setting is updated', pver() !== vOld && fs.readFileSync(path.join(Q, '.claude/system-version'), 'utf8').trim() === '2026-01-01.1', true);
+fs.writeFileSync(path.join(P, '.claude/system-version'), '2026-01-01.1\n');
+withMaster(P, (ru) => refused('the master folder is the project folder', ru));
+sh(`git clone -q "${B}" "${path.join(P, 'inner-master')}"`, AU); withMaster(path.join(P, 'inner-master'), (ru) => refused('the master folder is inside the project', ru));
+const TM = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-tmpmaster-')); sh(`git clone -q "${B}" "${TM}/m"`, AU); withMaster(path.join(TM, 'm'), (ru) => refused('the master folder is in a temp folder', ru)); fs.rmSync(TM, { recursive: true, force: true });
+const NG = path.join(AU, 'nogit'); fs.cpSync(M, NG, { recursive: true, filter: (f) => !/\/\.git(\/|$)/.test(f) }); withMaster(NG, (ru) => refused('the master folder is not a git copy', ru));
+const NR = path.join(AU, 'noremote'); fs.cpSync(M, NR, { recursive: true, filter: (f) => !/\/\.git(\/|$)/.test(f) }); sh('git init -q -b main && git config user.email t@t && git config user.name t && git add -A && git commit -q -m x', NR); withMaster(NR, (ru) => refused('the master folder has no remote', ru));
+fs.appendFileSync(path.join(M, 'README.md'), '\nlocal edit\n'); withMaster(M, (ru) => refused('a tracked file was changed locally', ru)); sh('git checkout -q -- README.md', M);
+fs.writeFileSync(path.join(M, 'stray-file.txt'), 'x'); withMaster(M, (ru) => refused('an untracked file is present', ru)); fs.rmSync(path.join(M, 'stray-file.txt'));
+fs.writeFileSync(path.join(M, 'extra.txt'), 'x'); sh('git config user.email t@t && git config user.name t && git add -A && git commit -q -m local', M); withMaster(M, (ru) => refused('the latest commit is not the remote\'s', ru)); sh('git reset -q --hard origin/main', M);
+sh(`git remote set-url origin "${path.join(AU, 'gone.git')}"`, M); withMaster(M, (ru) => refused('the remote cannot be reached, so no fallback to what is there', ru)); sh(`git remote set-url origin "${B}"`, M);
+fs.writeFileSync(path.join(M, '.DS_Store'), 'x'); const okDs = upd('yes, update'); fs.rmSync(path.join(M, '.DS_Store')); t('update: a stray .DS_Store alone does not stop the update', pver() !== vOld, true);
+t('update: notice is not offered when the master folder is in a temp folder', (() => { const T2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-tmpmaster-')); sh(`git clone -q "${B}" "${T2}/m"`, AU); fs.writeFileSync(path.join(P, '.claude/system-version'), '2026-01-01.1\n'); sysJson({ masterPath: path.join(T2, 'm') }); const r = hasNotice(startAuto('startup')); sysJson({}); fs.rmSync(T2, { recursive: true, force: true }); return r; })(), false);
 fs.rmSync(AU, { recursive: true, force: true });
 }
 // quoted text after a flag ending in m is dropped only for git commit / tag / merge

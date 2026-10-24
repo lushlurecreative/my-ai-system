@@ -1,4 +1,4 @@
-import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
+import { execFileSync } from 'node:child_process'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 export const deny = (reason) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
 export function rel(root, p) { p = String(p || ''); if (path.isAbsolute(p)) p = path.relative(root, p); return p.replace(/^\.\//, ''); }
 export function readTask(root) {
@@ -59,5 +59,30 @@ export const quiet = (s) => stripInertHeredocs(String(s || '')).replace(/(\s-[a-
 const verNum = (v) => String(v || '').trim().split(/[-.]/).map(Number);
 export const verNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; };
 export function masterPathOf(root) { let sys = {}; try { sys = JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch {} return String(sys.masterPath || '~/my-ai-system').replace(/^~/, os.homedir()); }
+// The master folder must be a real, clean copy of the master repo, outside the project and outside any temp folder. With sync:true it also pulls and then requires the latest commit to equal the remote's; any failure stops the update (nothing falls back to "use what is there").
+const TMP_ROOTS = ['/tmp', '/private/tmp', '/var/tmp', '/var/folders', '/private/var/folders'];
+const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(String(p)); } };
+const within = (child, parent) => child === parent || child.startsWith(parent + path.sep);
+const gitIn = (m, args, ms = 20000) => execFileSync('git', ['-C', m, ...args], { timeout: ms, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+export function verifyMaster(project, master, { sync = false } = {}) {
+  const no = (reason) => ({ ok: false, reason });
+  if (!project) return no('the project folder is not known from the trusted setting');
+  const P = real(project), M = real(master);
+  if (!fs.existsSync(path.join(M, 'install.sh'))) return no('the master system folder was not found');
+  if (M === P) return no('the master folder is the project folder');
+  if (within(M, P)) return no('the master folder is inside the project');
+  if (within(P, M)) return no('the project is inside the master folder');
+  if ([os.tmpdir(), ...TMP_ROOTS].some((t) => within(M, real(t)))) return no('the master folder is in a temporary folder');
+  try { if (real(gitIn(M, ['rev-parse', '--show-toplevel'])) !== M) return no('the master folder is not the top of a git copy'); gitIn(M, ['rev-parse', '@{upstream}']); } catch { return no('the master folder is not a proper git copy with a remote'); }
+  if (sync) { try { gitIn(M, ['fetch', '-q']); gitIn(M, ['pull', '--ff-only', '-q']); } catch { return no('the master folder could not be brought up to date from its remote'); } }
+  try {
+    if (sync) {
+      const dirty = gitIn(M, ['status', '--porcelain']).split('\n').filter((l) => l.trim() && !/\.DS_Store$/.test(l));
+      if (dirty.length) return no('the master folder has local changes');
+      if (gitIn(M, ['rev-parse', 'HEAD']) !== gitIn(M, ['rev-parse', '@{upstream}'])) return no('the master folder\'s latest commit does not match its remote');
+    }
+  } catch { return no('the master folder could not be checked'); }
+  return { ok: true, master: M };
+}
 export function system(root) { try { return JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch { return {}; } }
 export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');

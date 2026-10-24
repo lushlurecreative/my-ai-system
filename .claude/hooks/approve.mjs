@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // UserPromptSubmit: when Shaun types "yes, install X" (or "install: X") in chat, record the approval. The harness runs this only on HIS messages, so Claude cannot forge it.
 // scope-guard.mjs reads .claude/approvals.json. Approvals last 24 hours. Fails open (no approval) on any error.
-import fs from 'node:fs'; import path from 'node:path'; import { execFileSync } from 'node:child_process'; import { grantUnlock } from './override.mjs'; import { verNewer, masterPathOf } from './common.mjs';
+import fs from 'node:fs'; import path from 'node:path'; import { execFileSync } from 'node:child_process'; import { grantUnlock } from './override.mjs'; import { verNewer, masterPathOf, verifyMaster } from './common.mjs';
 export function parse(prompt) {
   const p = String(prompt || '').trim(); if (!p || p.length > 300) return [];
   const m = p.match(/^\s*(?:yes|yep|yeah|ok|okay|approved?)\b[\s,.!:-]*install\s+(.+?)\s*[.!]?\s*$/i) || p.match(/^\s*install:\s*(.+?)\s*$/i);
@@ -43,16 +43,18 @@ export function parseUnlock(prompt) { const p = String(prompt || '').trim().repl
 // "yes, update": Shaun's own message runs the update, here in the hook, so nothing updates without his word and Claude never has to run the installer.
 const UPDATE = /^\s*(?:(?:ok|okay|sure)\b[\s,.!:-]*)?yes\b[\s,.!:-]*update(?:\s+(?:the\s+)?system)?\s*[.!]?\s*$/i;
 export const parseUpdate = (prompt) => { const p = String(prompt || '').trim().replace(/^[\s"'`>*“-]+/, ''); return !!p && p.length <= 60 && UPDATE.test(p); };
-export function runUpdate(root) {
+export function runUpdate() {
   try {
-    const master = masterPathOf(root); if (!fs.existsSync(path.join(master, 'install.sh'))) return { ok: false, msg: `The system update failed: the master system folder was not found at ${master}.` };
-    let have = '0'; try { have = fs.readFileSync(path.join(root, '.claude/system-version'), 'utf8').trim(); } catch {}
-    try { execFileSync('git', ['-C', master, 'pull', '--ff-only', '-q'], { timeout: 15000, stdio: 'ignore' }); } catch { /* offline or diverged: use what is there */ }
-    const want = fs.readFileSync(path.join(master, 'VERSION'), 'utf8').trim();
+    const project = process.env.CLAUDE_PROJECT_DIR; // only the trusted environment setting; never the folder a chat reports
+    if (!project) return { ok: false, msg: 'The system update was stopped: the project folder is not known from the trusted setting. Nothing was installed.' };
+    const master = masterPathOf(project); const v = verifyMaster(project, master, { sync: true });
+    if (!v.ok) return { ok: false, msg: `The system update was stopped: ${v.reason}. Nothing was installed.` };
+    let have = '0'; try { have = fs.readFileSync(path.join(project, '.claude/system-version'), 'utf8').trim(); } catch {}
+    const want = fs.readFileSync(path.join(v.master, 'VERSION'), 'utf8').trim();
     if (!verNewer(want, have)) return { ok: true, msg: `The system is already on the latest version (${have}).` };
-    execFileSync('bash', [path.join(master, 'install.sh'), root], { timeout: 40000, stdio: 'ignore' });
+    execFileSync('bash', [path.join(v.master, 'install.sh'), project], { timeout: 40000, stdio: 'ignore' });
     return { ok: true, msg: `The system was updated from ${have} to ${want}. The new rules text is read from the next fresh chat; the checks already use the new version. The changed system files are uncommitted: include them in the next commit.` };
-  } catch (e) { return { ok: false, msg: `The system update failed (${String(e.message || e).split('\n')[0].slice(0, 120)}).` }; }
+  } catch (e) { return { ok: false, msg: `The system update failed (${String(e.message || e).split('\n')[0].slice(0, 120)}). Nothing was installed.` }; }
 }
 export function record(root, names) {
   const f = path.join(root, '.claude/approvals.json'); let cur = []; try { cur = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
@@ -64,7 +66,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); const root = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(); const names = [...parse(input.prompt), ...parseAgents(input.prompt)]; const notes = []; const shown = [];
     // `shown` = lines Shaun sees himself (systemMessage)
-    if (parseUpdate(input.prompt)) { const u = runUpdate(root); shown.push(u.msg); notes.push(`${u.msg} Tell Shaun the result in one plain sentence.`); }
+    if (parseUpdate(input.prompt)) { const u = runUpdate(); shown.push(u.msg); notes.push(`${u.msg} Tell Shaun the result in one plain sentence.`); }
     const unl = parseUnlock(input.prompt);
     if (unl) { const got = grantUnlock(root, unl.word); if (got.length) { const list = got.map((x) => x.value).join(', '); shown.push(`Unlocked for 3 hours: ${list}`); notes.push(`Shaun unlocked ${list} for 3 hours. Make exactly the change you described, nothing more, then tell him in plain words that it is done. Do not mention files or code to him.`); } else notes.push('Shaun typed unlock, but nothing is waiting for that word (one word unlocks one thing; there is no "unlock all"). Ask again in plain words, and give him the exact word to type (the block message names it).'); }
     const disc = parseDiscuss(input.prompt);

@@ -1,3 +1,5 @@
+Master-chat rules (what the chat that builds this system may and may not touch): see MASTER-CHAT.md.
+
 # my-ai-system
 
 A folder of rules, guard scripts, agents and lens skills for Claude Code. It assumes the model will drift and makes drifting impossible instead of asking it not to. It is project-agnostic: project details live in each project's `docs/` files.

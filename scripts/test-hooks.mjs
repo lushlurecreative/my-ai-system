@@ -302,4 +302,5 @@ fs.writeFileSync(path.join(G, 'supabase/migrations/002.sql'), 'select 2;\n'); gg
 fs.writeFileSync(path.join(G, '.claude/override.txt'), 'allow: supabase/migrations/002.sql\n'); t('glob: that file unlocked by name in override.txt -> allow', gRun('git commit -m "m"'), 'allow'); fs.rmSync(path.join(G, '.claude/override.txt'));
 gg('git reset -q supabase/migrations/002.sql'); fs.rmSync(path.join(G, 'supabase/migrations/002.sql')); fs.writeFileSync(path.join(G, 'notes.txt'), 'changed\n'); gg('git add notes.txt'); t('glob: committing an unrelated file -> allow', gRun('git commit -m "n"'), 'allow');
 for (const d of [G, gBare]) fs.rmSync(d, { recursive: true, force: true });
+t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

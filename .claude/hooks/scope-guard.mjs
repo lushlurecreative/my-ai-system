@@ -3,7 +3,7 @@
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden } from './override.mjs';
-import { deny, rel, readTask, readToolbox, readApprovals, readGo, consumeGo, system, globRe, discussionOn, quiet } from './common.mjs';
+import { deny, rel, readTask, readToolbox, readApprovals, readGo, consumeGo, system, globRe, discussionOn, quiet, stripInertHeredocs } from './common.mjs';
 const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS)\.md$/, /^docs\/notes\//];
 export function checkEdit(root, filePath) {
   const r = rel(root, filePath);
@@ -48,11 +48,11 @@ export function gateActivation(root, text) {
   return deny('A task cannot start yet: Shaun has not said go in chat (sharing information, a quote or a pasted reply is not a go). Name the task in one sentence and stop. When he types go, "option 2", "do it" or "start ...", set Status: ACTIVE.');
 }
 // Shell commands that write files follow the same rules as edits. Quoted text and heredoc bodies are ignored; a path with a variable or wildcard cannot be checked and is skipped.
-const NOISE = (c) => c.replace(/<<-?\s*(['"]?)(\w+)\1([^\n]*)\n[\s\S]*?\n\s*\2\b/g, ' $3 ').replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, '""');
+const NOISE = (c) => stripInertHeredocs(c).replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, '""');
 const TMP = [os.tmpdir(), '/tmp', '/private/tmp', '/var/tmp', '/var/folders', '/private/var/folders'];
 export function shellTargets(cmd) {
   const c = NOISE(String(cmd || '')); const out = [];
-  for (const m of c.matchAll(/(?:^|[\s;&|(])\d?>>?(?!&)\s*([^\s;&|<>()"]+)/g)) out.push(m[1]);
+  for (const m of c.matchAll(/(?<!>)(?:\d|&)?>>?(?!&)\s*([^\s;&|<>()"]+)/g)) out.push(m[1]);
   for (const seg of c.split(/[;&|\n]+/)) {
     const a = seg.trim().split(/\s+/).filter(Boolean); if (!a.length) continue; const cmdName = a[0].replace(/^.*\//, ''); const args = a.slice(1).filter((x) => !x.startsWith('-') && x !== '""' && !/[<>]/.test(x));
     if (cmdName === 'tee' || cmdName === 'cp' || cmdName === 'install') { if (args.length) out.push(args[args.length - 1]); }
@@ -83,7 +83,7 @@ export function checkBash(root, cmd) {
   }
   if (/\brm\s+-[a-zA-Z]*r[a-zA-Z]*f|\brm\s+-[a-zA-Z]*f[a-zA-Z]*r|\bgit\s+reset\s+--hard|\bgit\s+checkout\s+--\s+\.|\bgit\s+clean\s+-[a-zA-Z]*f|\bdb\s+reset\b|\bdrop\s+(table|schema|database)\b|\btruncate\s+table\b/i.test(c)) return deny('Destructive command blocked (rm -rf, git reset --hard, git clean, db reset, DROP, TRUNCATE). Ask Shaun.');
   const q = quiet(c); const mentionsSelf = (x) => [...SELF, ...SELF_DIRS].some((s) => x.includes(s));
-  const redirectToSelf = [...q.matchAll(/(?<![\w&])\d?>>?(?!&)\s*["']?([^\s;&|<>()"']+)/g)].some((m) => mentionsSelf(m[1]));
+  const redirectToSelf = [...q.matchAll(/(?<!>)(?:\d|&)?>>?(?!&)\s*["']?([^\s;&|<>()"']+)/g)].some((m) => mentionsSelf(m[1]));
   if (redirectToSelf || (mentionsSelf(q) && /(\btee\b|\bsed\s+-i|\bmv\b|\bcp\b|\brm\b|<<)/.test(q)) || (mentionsSelf(c) && /\bwriteFile/.test(c))) return deny('Shell writes to CLAUDE.md, PROTECTED.md or .claude/ are not allowed. Only Shaun edits the rules.');
   return checkShellWrites(root, c);
 }

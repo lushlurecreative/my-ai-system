@@ -302,6 +302,9 @@ fs.writeFileSync(path.join(G, 'supabase/migrations/002.sql'), 'select 2;\n'); gg
 fs.writeFileSync(path.join(G, '.claude/override.txt'), 'allow: supabase/migrations/002.sql\n'); t('glob: that file unlocked by name in override.txt -> allow', gRun('git commit -m "m"'), 'allow'); fs.rmSync(path.join(G, '.claude/override.txt'));
 gg('git reset -q supabase/migrations/002.sql'); fs.rmSync(path.join(G, 'supabase/migrations/002.sql')); fs.writeFileSync(path.join(G, 'notes.txt'), 'changed\n'); gg('git add notes.txt'); t('glob: committing an unrelated file -> allow', gRun('git commit -m "n"'), 'allow');
 t('glob project: commit message that mentions a protected path and an arrow, nothing staged -> allow', gRun('git commit -m "update src/lib/pricing.ts wording -> ok"'), 'allow'); t('glob project: a real redirect into a protected file -> deny', gRun('echo x > src/lib/pricing.ts'), 'deny');
+t('glob project bypass: bash heredoc writing a protected file -> deny', gRun('bash <<EOF\necho x > src/lib/pricing.ts\nEOF'), 'deny'); t('glob project bypass: $( ) in a commit message writing a protected file -> deny', gRun('git commit -m "$(echo x > src/lib/pricing.ts)"'), 'deny');
+t('glob project bypass: no-space redirect into a protected file -> deny', gRun('echo x>src/lib/pricing.ts'), 'deny'); t('glob project bypass: cat heredoc piped to bash writing a protected file -> deny', gRun('cat <<EOF | bash\necho x > src/lib/pricing.ts\nEOF'), 'deny');
+t('glob project legit: cat heredoc piped to git commit -F - naming a protected file -> allow', gRun('cat <<EOF | git commit -F -\nreword src/lib/pricing.ts -> ok\nEOF'), 'allow'); t('glob project legit: single-quoted commit message naming a protected file -> allow', gRun("git commit -m 'tweak src/lib/pricing.ts -> ok'"), 'allow');
 for (const d of [G, gBare]) fs.rmSync(d, { recursive: true, force: true });
 const readGoCount = () => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/approvals.json'), 'utf8')).filter((x) => x.name === '__go__').length; } catch { return 0; } };
 // ---- additions: discussion mode (a real conversation; every edit block stays) ----
@@ -339,5 +342,23 @@ t('shell: redirect into .claude/ -> deny', decision(bash('echo x > .claude/overr
 t('shell: cp into a quoted .claude/ path -> deny', decision(bash('cp /tmp/a ".claude/hooks/x.mjs"')), 'deny'); t('shell: node writeFileSync into .claude/ -> deny', decision(bash(`node -e "fs.writeFileSync('.claude/hooks/a','x')"`)), 'deny');
 const dnote = JSON.stringify(appr('discussion mode')); t('discussion mode note: no generic opener when there is no topic', /generic question/.test(dnote) && /then stop/.test(dnote), true); t('discussion mode note: no talk of its own pending work unless asked', /pending work/.test(dnote) && /unpushed/.test(dnote), true); appr('task mode');
 t('CLAUDE.md discussion section carries the same two rules', /generic question/.test(fs.readFileSync(path.join(SRC, 'CLAUDE.md'), 'utf8')) && /pending work/.test(fs.readFileSync(path.join(SRC, 'CLAUDE.md'), 'utf8')), true);
+// ---- additions: shell-guard bypasses closed (heredoc fed to a shell, $( ) in a message, redirect with no space) ----
+task('ACTIVE', ['src/pages/**'], [], '');
+t('bypass: bash heredoc writing PROTECTED.md -> deny', decision(bash('bash <<EOF\necho x > PROTECTED.md\nEOF')), 'deny');
+t('bypass: sh heredoc (quoted tag) copying into .claude/ -> deny', decision(bash("sh <<'EOF'\ncp /tmp/a .claude/hooks/x.mjs\nEOF")), 'deny');
+t('bypass: node heredoc using writeFileSync on PROTECTED.md -> deny', decision(bash('node <<EOF\nrequire("fs").writeFileSync("PROTECTED.md","x")\nEOF')), 'deny');
+t('bypass: cat heredoc piped to bash -> deny', decision(bash('cat <<EOF | bash\necho x > PROTECTED.md\nEOF')), 'deny');
+t('bypass: $( ) inside a commit message writing PROTECTED.md -> deny', decision(bash('git commit -m "$(echo x > PROTECTED.md)"')), 'deny');
+t('bypass: backticks inside a commit message writing PROTECTED.md -> deny', decision(bash('git commit -m "`echo x > PROTECTED.md`"')), 'deny');
+t('bypass: redirect with no space, echo x>PROTECTED.md -> deny', decision(bash('echo x>PROTECTED.md')), 'deny'); t('bypass: no-space redirect into .claude/ -> deny', decision(bash('echo x>.claude/override.txt')), 'deny');
+t('bypass: no-space append, echo x>>PROTECTED.md -> deny', decision(bash('echo x>>PROTECTED.md')), 'deny'); t('bypass: &> redirect into PROTECTED.md -> deny', decision(bash('echo x &>PROTECTED.md')), 'deny');
+t('bypass: no-space redirect outside the task scope -> deny', decision(bash('echo x>src/other/a.ts')), 'deny'); t('no-space redirect inside the task scope -> allow', decision(bash('echo x>src/pages/a.ts')), 'allow');
+t('bypass: bash heredoc writing outside the task scope -> deny', decision(bash('bash <<EOF\necho x > src/other/a.ts\nEOF')), 'deny');
+t('legit: double-quoted commit message naming PROTECTED.md and .claude/ -> allow', decision(bash('git commit -m "note: PROTECTED.md and .claude/ are read-only -> fine"')), 'allow');
+t('legit: single-quoted commit message naming PROTECTED.md -> allow', decision(bash("git commit -m 'update PROTECTED.md -> ok'")), 'allow');
+t('legit: git commit -F - heredoc whose text mentions PROTECTED.md and > -> allow', decision(bash('git commit -F - <<EOF\nnotes: PROTECTED.md -> .claude/ mention > ok\nEOF')), 'allow');
+t('legit: cat heredoc piped to git commit -F - -> allow', decision(bash('cat <<EOF | git commit -F -\nsee PROTECTED.md > x\nEOF')), 'allow');
+t('legit: git commit -am with a message naming CLAUDE.md -> allow', decision(bash('git commit -am "tweak CLAUDE.md wording"')), 'allow');
+t('legit: cat heredoc into a normal notes file -> allow', decision(bash('cat <<EOF > docs/notes/a.md\nsee PROTECTED.md > x\nEOF')), 'allow');
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

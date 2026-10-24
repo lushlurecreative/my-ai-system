@@ -279,4 +279,27 @@ t('offload: "open the site on your phone and let me know what you see" -> block'
 t('a result Claude produced itself -> allow', decision(stopS('I ran the regression suite: 57 of 57 passed on the live engine.', 'do5')), 'allow');
 t('a real blocker (needs the admin password) is allowed', decision(stopS('I opened /admin and tried to run the regression suite, but it needs the admin password, which only you have. Can you sign in on that page? I will keep going on the rest.', 'do6')), 'allow');
 t('"paste this into Terminal" is not an offload of Claude\'s work -> allow', decision(stopS('I cannot write that file. Paste this into Terminal: git pull', 'do7')), 'allow');
+// ---- additions: folder/glob entries in PROTECTED.md are enforced; first fill goes through set-protected.sh ----
+const G = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-glob-')); execSync(`bash "${SRC}/install.sh" "${G}"`, { stdio: 'ignore' });
+const gRun = (c) => { const o = execSync(`node "${G}/.claude/hooks/protected-paths.mjs"`, { input: JSON.stringify({ cwd: G, tool_name: 'Bash', tool_input: { command: c } }), encoding: 'utf8' }); return o ? decision(JSON.parse(o)) : 'allow'; };
+const gMsg = (m) => { const o = execSync(`node "${G}/.claude/hooks/protected-paths.mjs"`, { input: JSON.stringify({ cwd: G, tool_name: 'mcp__Lovable__send_message', tool_input: { message: m } }), encoding: 'utf8' }); return o ? decision(JSON.parse(o)) : 'allow'; };
+const gg = (c) => execSync(c, { cwd: G, stdio: 'ignore' });
+const proposal = path.join(G, 'docs/notes/PROTECTED-PROPOSED.md'); fs.mkdirSync(path.dirname(proposal), { recursive: true });
+const setp = () => { try { execSync(`bash "${SRC}/scripts/set-protected.sh" docs/notes/PROTECTED-PROPOSED.md`, { cwd: G, stdio: 'pipe' }); return 0; } catch (e) { return e.status; } };
+fs.writeFileSync(proposal, '# P\n\n## Protected files\n- `(nothing yet)`\n'); t('set-protected: proposal with no real entries is refused', setp(), 4);
+t('set-protected: refused proposal leaves PROTECTED.md as the template', /\(path\/to/.test(fs.readFileSync(path.join(G, 'PROTECTED.md'), 'utf8')), true);
+fs.writeFileSync(proposal, '# P\n\n## Protected files\n- `supabase/migrations/**`\n- `src/lib/pricing.ts`\n\n## Protected database functions\n- `is_admin`\n\n## Protected words\n- `checkout`\n'); t('set-protected: a real proposal is written on the first fill', setp(), 0);
+t('set-protected: PROTECTED.md now holds the proposal', /supabase\/migrations\/\*\*/.test(fs.readFileSync(path.join(G, 'PROTECTED.md'), 'utf8')), true);
+fs.writeFileSync(proposal, '# P\n\n## Protected files\n- `src/other.ts`\n'); t('set-protected: second fill is refused once real entries exist', setp(), 3);
+t('set-protected: refused second fill leaves the first list intact', /pricing\.ts/.test(fs.readFileSync(path.join(G, 'PROTECTED.md'), 'utf8')), true);
+const gBare = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-globbare-')); execSync('git init -q --bare -b main', { cwd: gBare });
+fs.mkdirSync(path.join(G, 'supabase/migrations'), { recursive: true }); fs.writeFileSync(path.join(G, 'supabase/migrations/001.sql'), 'select 1;\n'); fs.writeFileSync(path.join(G, 'notes.txt'), 'base\n');
+gg('git init -q -b main && git config user.email t@t && git config user.name t && git add -A && git commit -q -m base'); gg(`git remote add origin "${gBare}" && git push -q -u origin main`);
+t('glob: shell write into a protected folder -> deny', gRun('cp /tmp/x.sql supabase/migrations/002.sql'), 'deny'); t('glob: heredoc/redirect into the folder -> deny', gRun('echo select 2 > supabase/migrations/003.sql'), 'deny');
+t('glob: shell write elsewhere is not blocked by the glob', gRun('echo hi > docs/notes/a.md'), 'allow');
+t('glob: connector message is not blocked just because the list has a ** entry', gMsg('Please fix the header spacing on the home page.'), 'allow');
+fs.writeFileSync(path.join(G, 'supabase/migrations/002.sql'), 'select 2;\n'); gg('git add supabase/migrations/002.sql'); t('glob: committing a new file inside the protected folder -> deny', gRun('git commit -m "m"'), 'deny');
+fs.writeFileSync(path.join(G, '.claude/override.txt'), 'allow: supabase/migrations/002.sql\n'); t('glob: that file unlocked by name in override.txt -> allow', gRun('git commit -m "m"'), 'allow'); fs.rmSync(path.join(G, '.claude/override.txt'));
+gg('git reset -q supabase/migrations/002.sql'); fs.rmSync(path.join(G, 'supabase/migrations/002.sql')); fs.writeFileSync(path.join(G, 'notes.txt'), 'changed\n'); gg('git add notes.txt'); t('glob: committing an unrelated file -> allow', gRun('git commit -m "n"'), 'allow');
+for (const d of [G, gBare]) fs.rmSync(d, { recursive: true, force: true });
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

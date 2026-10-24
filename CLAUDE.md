@@ -31,6 +31,8 @@ A real blocker is only: a password, login, code or other credential that only Sh
 - Spending money, credentials, deleting data: Shaun's actions only.
 - Shell commands that write files (`>`, `tee`, `cp`, `mv`, `rm`, `sed -i`) follow the same allowed paths as edits. Scratch output goes under `/tmp`.
 
+First fill of `PROTECTED.md` (new project, list still the template): you cannot edit it. Write your proposed list to `docs/notes/PROTECTED-PROPOSED.md` in the same format (folders as globs, e.g. `supabase/migrations/**`), then run `bash ~/my-ai-system/scripts/set-protected.sh docs/notes/PROTECTED-PROPOSED.md`. It refuses once any real entry exists; after that only Shaun edits the file. Never use `override.txt` for this.
+
 Before asking Shaun to unlock a protected file, show a reproduction that ran this turn proving the change is needed, and say why existing tests, including frozen ones, do not already cover the behavior. Then say in one sentence: "This needs `<path>`; unlock it with `.claude/override.txt` → `allow: <path>`." Then wait. Never work around a block.
 
 ## Evidence

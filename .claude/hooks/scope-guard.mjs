@@ -3,7 +3,7 @@
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden, unlockHint } from './override.mjs';
-import { deny, rel, readTask, readToolbox, readApprovals, readGo, consumeGo, system, globRe, discussionOn, quiet, stripInertHeredocs } from './common.mjs';
+import { deny, rel, readTask, readToolbox, readApprovals, readGo, consumeGo, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf } from './common.mjs';
 const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS)\.md$/, /^docs\/notes\//];
 export function checkEdit(root, filePath) {
   const r = rel(root, filePath);
@@ -71,8 +71,29 @@ export function checkShellWrites(root, cmd) {
   }
   return null;
 }
+// The master system folder belongs to the master-system chat, never to a project. Reading it and `git pull`/`fetch` are fine; anything that writes into it or changes its git history is denied.
+const GIT_WRITE = new Set(['commit', 'push', 'reset', 'checkout', 'switch', 'clean', 'merge', 'rebase', 'apply', 'am', 'rm', 'mv', 'restore', 'stash', 'cherry-pick', 'tag', 'add', 'revert', 'config', 'remote', 'branch', 'init', 'gc', 'worktree']);
+const FILE_WRITE = new Set(['cp', 'mv', 'rm', 'tee', 'ln', 'touch', 'mkdir', 'truncate', 'chmod', 'chown', 'dd', 'install', 'rsync', 'rmdir', 'unlink']);
+export function checkMasterTouch(root, cmd) {
+  const master = masterPathOf(root); const name = path.basename(master); if (!name || path.resolve(master) === path.resolve(root)) return null;
+  const text = quiet(String(cmd || '')); if (!text.includes(name)) return null;
+  const why = deny('The master system folder is not part of this project. Do not change it from here. If the master needs a fix, tell Shaun in plain English the problem and what you recommend, and give him a ready prompt for his master-system chat.');
+  let inMaster = false;
+  for (const seg of text.split(/&&|\|\||[;|\n]/)) {
+    const toks = seg.trim().split(/\s+/).filter(Boolean); if (!toks.length) continue;
+    let k = 0; while (toks[k] === 'sudo' || /^\w+=\S*$/.test(toks[k] || '')) k++; const c0 = (toks[k] || '').replace(/^.*\//, ''); const args = toks.slice(k + 1);
+    if (c0 === 'cd' || c0 === 'pushd') { inMaster = args.some((a) => a.includes(name)); continue; }
+    const touches = inMaster || seg.includes(name); if (!touches) continue;
+    if (c0 === 'git') { let j = 0; while (j < args.length && args[j].startsWith('-')) j += /^-[Cc]$/.test(args[j]) ? 2 : 1; const sub = args[j]; if (GIT_WRITE.has(sub) && !(sub === 'remote' && args[j + 1] === '-v')) return why; }
+    if (FILE_WRITE.has(c0)) return why;
+    if (c0 === 'sed' && args.some((a) => /^-[a-zA-Z]*i/.test(a))) return why;
+    if (new RegExp('>>?\\s*[^\\s;&|]*' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(seg) || (inMaster && /(?<!>)(?:\d|&)?>>?(?!&)\s*[^\s;&|<>()]+/.test(seg) && !/\/dev\/null/.test(seg))) return why;
+  }
+  return null;
+}
 export function checkBash(root, cmd) {
   const c = String(cmd || '');
+  { const m = checkMasterTouch(root, c); if (m) return m; }
   const inst = checkInstall(root, c); if (inst) return inst;
   if (/TASK\.md/.test(c) && /Status:\s*ACTIVE/i.test(c) && /(>>?|\btee\b|\bsed\s+-\w*i|\bpython3?\b|\bnode\b|\bperl\b|\bawk\b)/.test(c)) { const g = gateActivation(root, c); if (g) return g; }
   if (discussionOn(root) && /\bgit\s+(?:commit|push|add|merge|rebase|stash|tag|cherry-pick)\b/.test(c)) return deny('Discussion mode is on: no commits or pushes until Shaun says go (or "task mode").');

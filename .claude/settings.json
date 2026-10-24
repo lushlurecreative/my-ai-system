@@ -62,7 +62,7 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/approve.mjs\"",
-            "timeout": 5
+            "timeout": 60
           }
         ]
       }

@@ -396,6 +396,15 @@ t('unlock: a shell write to a protected file is blocked and names the word', (r1
 uAppr('unlock pricing'); t('unlock: after unlock the shell write is allowed', decision(uShell('echo x > src/lib/pricing.ts')), 'allow');
 t('unlock: a connector message with a protected word is blocked and names the word', (r1 = uMsg('Change the checkout button colour'), decision(r1) === 'deny' && /unlock checkout/.test(uReason(r1))), true);
 uAppr('unlock checkout'); t('unlock: after unlock the message is allowed', decision(uMsg('Change the checkout button colour')), 'allow');
+const uApprRaw = (prompt) => { const o = execSync(`node "${UL}/.claude/hooks/approve.mjs"`, { input: JSON.stringify({ cwd: UL, prompt }), encoding: 'utf8' }); return o ? JSON.parse(o) : {}; };
+fs.writeFileSync(path.join(UL, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/lib/pricing.ts`\n- `src/server/pricing.ts`\n'); fs.rmSync(path.join(UL, '.claude/pending.json'), { force: true }); fs.rmSync(path.join(UL, '.claude/unlocks.json'), { force: true });
+uEdit('src/lib/pricing.ts'); uEdit('src/server/pricing.ts'); const ukeys = pendingKeys();
+t('unlock: two files with the same short name get two different words', ukeys.length === 2 && new Set(ukeys).size === 2, true); t('unlock: the first keeps the short word', ukeys.includes('pricing'), true);
+t('unlock: each block message names its own word', [uEdit('src/lib/pricing.ts'), uEdit('src/server/pricing.ts')].every((r, k) => new RegExp(`unlock ${ukeys[k]}\\b`).test(uReason(r))), true);
+const ur = uApprRaw('unlock pricing'); t('unlock: one word unlocks only that one file', decision(uEdit('src/lib/pricing.ts')) === 'allow' && decision(uEdit('src/server/pricing.ts')) === 'deny', true);
+t('unlock: the approval shows Shaun the full path it unlocked', /src\/lib\/pricing\.ts/.test(ur.systemMessage || ''), true);
+t('unlock: there is no "unlock all"', (uAppr('unlock all'), decision(uEdit('src/server/pricing.ts'))), 'deny'); t('unlock: "unlock all" tells Claude nothing is waiting for it', /nothing is waiting/.test(uAppr('unlock all')), true);
+const other = pendingKeys().find((k) => k !== 'pricing'); uAppr(`unlock ${other}`); t('unlock: the second file is opened by its own word', decision(uEdit('src/server/pricing.ts')), 'allow');
 fs.rmSync(UL, { recursive: true, force: true });
 // automatic update
 const AU = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-auto-')); const M0 = path.join(AU, 'm0'); const B = path.join(AU, 'bare.git'); const M = path.join(AU, 'master'); const M2 = path.join(AU, 'master2'); const P = path.join(AU, 'proj');
@@ -408,14 +417,25 @@ const sysJson = (o) => fs.writeFileSync(path.join(P, '.claude/system.json'), JSO
 const startAuto = (source) => execSync(`node "${P}/.claude/hooks/session-start.mjs"`, { input: JSON.stringify({ source }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: P, AIS_NO_AUTOUPDATE: '' } });
 const pver = () => fs.readFileSync(path.join(P, '.claude/system-version'), 'utf8').trim();
 fs.writeFileSync(path.join(P, 'docs/RULINGS.md'), '# Rulings\n\n- 2026-10-24: keep this line.\n'); fs.writeFileSync(path.join(P, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/keep.ts`\n');
-sysJson({}); bump('2099-01-01.1'); const out1 = startAuto('startup');
-t('auto update: a fresh chat pulls the master and installs the newer version', pver(), '2099-01-01.1'); t('auto update: Claude is told about it in the session text', /updated itself from .* to 2099-01-01\.1/.test(JSON.parse(out1).hookSpecificOutput.additionalContext), true);
-t('auto update: the project\'s own rulings, protected list and settings are kept', fs.readFileSync(path.join(P, 'docs/RULINGS.md'), 'utf8').includes('keep this line') && fs.readFileSync(path.join(P, 'PROTECTED.md'), 'utf8').includes('src/keep.ts') && JSON.parse(fs.readFileSync(path.join(P, '.claude/system.json'), 'utf8')).autopilot === true, true);
-bump('2099-01-01.2'); startAuto('resume'); t('auto update: a resumed chat does not update', pver(), '2099-01-01.1');
-sysJson({ autoUpdate: false }); startAuto('startup'); t('auto update: autoUpdate false switches it off', pver(), '2099-01-01.1');
-sysJson({ masterPath: path.join(AU, 'nowhere') }); const out2 = startAuto('startup'); t('auto update: no master folder -> silent, no failure line', /update failed/.test(JSON.parse(out2).hookSpecificOutput.additionalContext), false);
-sysJson({}); startAuto('startup'); t('auto update: back on, the next fresh chat picks up the newer version', pver(), '2099-01-01.2');
-fs.writeFileSync(path.join(P, '.claude/system-version'), '2999-01-01.1\n'); startAuto('startup'); t('auto update: never goes back to an older version', pver(), '2999-01-01.1');
+const noticeOf = (out) => JSON.parse(out); const hasNotice = (out) => /update is available/.test(noticeOf(out).hookSpecificOutput.additionalContext);
+const upd = (prompt) => { const o = execSync(`node "${P}/.claude/hooks/approve.mjs"`, { input: JSON.stringify({ cwd: P, prompt }), encoding: 'utf8' }); return o ? JSON.parse(o) : {}; };
+const v0 = pver(); sysJson({}); bump('2099-01-01.1'); const out1 = startAuto('startup');
+t('update: a fresh chat only reports that an update exists; nothing is installed', pver(), v0);
+t('update: Claude is told to ask for "yes, update" and not to run the installer', hasNotice(out1) && /yes, update/.test(noticeOf(out1).hookSpecificOutput.additionalContext) && /do not run the installer/.test(noticeOf(out1).hookSpecificOutput.additionalContext), true);
+t('update: Shaun sees the notice himself, whatever Claude says', /yes, update/.test(noticeOf(out1).systemMessage || ''), true);
+t('update: a resumed chat does not check', hasNotice(startAuto('resume')), false);
+sysJson({ checkForUpdates: false }); t('update: checkForUpdates false switches the notice off', hasNotice(startAuto('startup')), false);
+sysJson({ masterPath: path.join(AU, 'nowhere') }); const out2 = startAuto('startup'); t('update: no master folder -> silent, no failure line', hasNotice(out2) || /update failed/.test(noticeOf(out2).hookSpecificOutput.additionalContext), false);
+sysJson({});
+upd('I will say yes, update tomorrow maybe'); t('update: a longer sentence containing "yes, update" does not update', pver(), v0);
+fs.writeFileSync(path.join(P, 'docs/RULINGS.md'), '# Rulings\n\n- 2026-10-24: keep this line.\n');
+const ru = upd('yes, update'); t('update: "yes, update" installs the newer version', pver(), '2099-01-01.1');
+t('update: Shaun sees what happened, with both versions', new RegExp(`updated from ${v0.replace(/\./g, '\\.')} to 2099-01-01\\.1`).test(ru.systemMessage || ''), true);
+t('update: the project\'s own rulings, protected list and settings are kept', fs.readFileSync(path.join(P, 'docs/RULINGS.md'), 'utf8').includes('keep this line') && fs.readFileSync(path.join(P, 'PROTECTED.md'), 'utf8').includes('src/keep.ts') && JSON.parse(fs.readFileSync(path.join(P, '.claude/system.json'), 'utf8')).autopilot === true, true);
+t('update: asking again says it is already on the latest version', /already on the latest/.test(upd('yes, update').systemMessage || ''), true);
+bump('2099-01-01.2'); t('update: the next fresh chat reports the newer one', hasNotice(startAuto('startup')), true);
+upd('Yes, update the system.'); t('update: "Yes, update the system." also works', pver(), '2099-01-01.2');
+fs.writeFileSync(path.join(P, '.claude/system-version'), '2999-01-01.1\n'); t('update: never offers an older version', hasNotice(startAuto('startup')), false); t('update: "yes, update" never goes back to an older version', (upd('yes, update'), pver()), '2999-01-01.1');
 fs.rmSync(AU, { recursive: true, force: true });
 }
 // quoted text after a flag ending in m is dropped only for git commit / tag / merge
@@ -428,5 +448,8 @@ t('legit: git tag -m naming PROTECTED.md -> allow', decision(bash('git tag -m "r
 t('legit: git merge -m naming .claude/ -> allow', decision(bash('git merge -m "merge .claude/ notes -> ok" other')), 'allow');
 t('legit: git -C . commit -m naming PROTECTED.md -> allow', decision(bash('git -C . commit -m "touch PROTECTED.md wording -> ok"')), 'allow');
 t('legit: git commit with two -m messages naming protected files -> allow', decision(bash('git commit -m "a: CLAUDE.md -> ok" -m "b: PROTECTED.md > fine"')), 'allow');
+// the master system folder is not touched from a project
+for (const c of ['git -C ~/my-ai-system commit -m x', 'git -C ~/my-ai-system push origin main', 'cd ~/my-ai-system && git commit -am x', 'echo x > ~/my-ai-system/CLAUDE.md', 'cp /tmp/a ~/my-ai-system/install.sh', 'rm ~/my-ai-system/VERSION', 'sed -i s/a/b/ ~/my-ai-system/install.sh', 'cd ~/my-ai-system && echo x > VERSION', 'git -C ~/my-ai-system remote set-url origin x', 'tee ~/my-ai-system/VERSION']) t(`master folder: ${c} -> deny`, decision(bash(c)), 'deny');
+for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system fetch', 'cat ~/my-ai-system/VERSION', 'bash ~/my-ai-system/install.sh .', 'git commit -m "synced from my-ai-system"', 'cd ~/my-ai-system && cat VERSION && cd - && git status', 'ls ~/my-ai-system']) t(`master folder: ${c} -> allow`, decision(bash(c)), 'allow');
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

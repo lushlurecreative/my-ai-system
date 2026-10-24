@@ -1,4 +1,4 @@
-import fs from 'node:fs'; import path from 'node:path';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 export const deny = (reason) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
 export function rel(root, p) { p = String(p || ''); if (path.isAbsolute(p)) p = path.relative(root, p); return p.replace(/^\.\//, ''); }
 export function readTask(root) {
@@ -56,5 +56,8 @@ export function stripInertHeredocs(text) {
 }
 const GIT_MESSAGE_CMD = /^\s*(?:sudo\s+)?git\s+(?:-C\s+\S+\s+|-c\s+\S+\s+|--[\w-]+(?:=\S+)?\s+)*(?:commit|tag|merge)\b/;
 export const quiet = (s) => stripInertHeredocs(String(s || '')).replace(/(\s-[a-zA-Z]*m|\s--message)(\s*=?\s*)("(?:[^"\\]|\\.)*"|'[^']*')/g, (m, flag, sp, body, offset, whole) => (GIT_MESSAGE_CMD.test(whole.slice(0, offset).split(/&&|\|\||[;|&\n]/).pop()) && (body[0] === "'" || !/\$\(|`/.test(body))) ? `${flag}${sp}""` : m).replace(/\d*>&\d*|&?>>?\s*\/dev\/null/g, ' ');
+const verNum = (v) => String(v || '').trim().split(/[-.]/).map(Number);
+export const verNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; };
+export function masterPathOf(root) { let sys = {}; try { sys = JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch {} return String(sys.masterPath || '~/my-ai-system').replace(/^~/, os.homedir()); }
 export function system(root) { try { return JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch { return {}; } }
 export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');

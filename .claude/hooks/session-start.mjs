@@ -5,28 +5,26 @@ const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const read = (p, n) => { try { const t = fs.readFileSync(path.join(root, p), 'utf8'); return n ? t.split('\n').slice(0, n).join('\n') : t; } catch { return `(missing: ${p})`; } };
 const sh = (c) => { try { return execSync(c, { cwd: root, stdio: ['ignore', 'pipe', 'ignore'], timeout: 4000 }).toString().trim(); } catch { return '?'; } };
 let input = {}; try { input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch {}
-// Automatic update: on a fresh chat, pull the master clone and run its installer when it holds a newer version. Needs no action from Shaun. Off with autoUpdate:false in system.json or AIS_NO_AUTOUPDATE=1.
-const verNum = (v) => String(v || '').trim().split(/[-.]/).map(Number);
-const newer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; };
-const autoUpdate = () => {
+// Update check: on a fresh chat, look (fetch only, nothing is installed) whether the master holds a newer version. If so, Shaun is told and must type "yes, update"; approve.mjs then runs the update. Off with checkForUpdates:false in system.json or AIS_NO_AUTOUPDATE=1.
+const updateCheck = () => {
   try {
-    if (process.env.AIS_NO_AUTOUPDATE === '1' || !['startup', 'clear'].includes(String(input.source || 'startup'))) return '';
+    if (process.env.AIS_NO_AUTOUPDATE === '1' || !['startup', 'clear'].includes(String(input.source || 'startup'))) return null;
     let sys = {}; try { sys = JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch {}
-    if (sys.autoUpdate === false) return '';
-    const master = String(sys.masterPath || '~/my-ai-system').replace(/^~/, os.homedir());
-    if (!fs.existsSync(path.join(master, 'install.sh')) || path.resolve(master) === path.resolve(root)) return '';
-    try { execFileSync('git', ['-C', master, 'pull', '--ff-only', '-q'], { timeout: 12000, stdio: 'ignore' }); } catch { /* offline or diverged: use what is there */ }
-    const want = fs.readFileSync(path.join(master, 'VERSION'), 'utf8').trim(); let have = '0'; try { have = fs.readFileSync(path.join(root, '.claude/system-version'), 'utf8').trim(); } catch {}
-    if (!want || !newer(want, have)) return '';
-    execFileSync('bash', [path.join(master, 'install.sh'), root], { timeout: 25000, stdio: 'ignore' });
-    return `The system updated itself from ${have} to ${want} at the start of this chat. The new rules text (CLAUDE.md) is read from the next chat; the checks already use the new version. The changed system files are uncommitted: include them in your next commit. You need not tell Shaun.`;
-  } catch (e) { return `The automatic system update failed (${String(e.message || e).split('\n')[0].slice(0, 120)}). Tell Shaun in one plain sentence. Do not retry it yourself.`; }
+    if (sys.checkForUpdates === false) return null;
+    const master = masterPathOf(root);
+    if (!fs.existsSync(path.join(master, 'install.sh')) || path.resolve(master) === path.resolve(root)) return null;
+    try { execFileSync('git', ['-C', master, 'fetch', '-q'], { timeout: 12000, stdio: 'ignore' }); } catch { /* offline: compare with what is there */ }
+    let want = ''; try { want = execFileSync('git', ['-C', master, 'show', '@{upstream}:VERSION'], { timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { try { want = fs.readFileSync(path.join(master, 'VERSION'), 'utf8').trim(); } catch {} }
+    let have = '0'; try { have = fs.readFileSync(path.join(root, '.claude/system-version'), 'utf8').trim(); } catch {}
+    return want && verNewer(want, have) ? { have, want } : null;
+  } catch { return null; }
 };
-const updated = autoUpdate();
+const upd = updateCheck();
+const updated = upd ? `A system update is available (${upd.have} to ${upd.want}). Tell Shaun in one plain sentence and ask him to type exactly: yes, update. Nothing is installed until he does; do not run the installer yourself.` : '';
 const behind = (() => { if (sh('git rev-parse --is-inside-work-tree') !== 'true') return ''; sh('git fetch --quiet origin'); const n = Number(sh('git rev-list --count HEAD..@{upstream}')); return Number.isFinite(n) && n > 0 ? `WARNING: this folder is ${n} commit${n > 1 ? 's' : ''} behind GitHub. If git status is clean, run git pull --ff-only yourself now and say so in one line. If there are uncommitted changes, tell Shaun first. Do not work from stale files.` : ''; })();
 const noVersion = fs.existsSync(path.join(root, '.claude/system-version')) ? '' : 'WARNING: .claude/system-version is missing, so the system may be half installed or an old copy. Tell Shaun first.';
 const model = input.model || input.model_name || process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL || '';
-import { discussionOn } from './common.mjs';
+import { discussionOn, verNewer, masterPathOf } from './common.mjs';
 const disc = discussionOn(root);
 let auto = false; try { auto = !!JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')).autopilot; } catch {}
 const out = [
@@ -39,4 +37,4 @@ const out = [
   'Rules: one task (docs/TASK.md). Edits outside its Allowed paths are blocked. PROTECTED.md files, CLAUDE.md and .claude/ are hard-blocked. DONE needs Evidence + reviewer PASS. Never end a turn by announcing work.',
   '', '=== docs/PROJECT.md ===', read('docs/PROJECT.md', 12), '', '=== docs/SUBGOALS.md ===', read('docs/SUBGOALS.md', 12), '', '=== docs/RULINGS.md (last 12 lines) ===', read('docs/RULINGS.md').split('\n').filter((l) => l.trim() && !l.startsWith('#') && !l.startsWith('<!--')).slice(-12).join('\n') || '(none yet)', '', '=== docs/TASK.md ===', read('docs/TASK.md'), '', '=== docs/NEXT.md (top) ===', read('docs/NEXT.md', 16),
 ];
-process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: out.join('\n') } }));
+process.stdout.write(JSON.stringify({ ...(upd ? { systemMessage: `System update available (${upd.have} to ${upd.want}). Type: yes, update` } : {}), hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: out.join('\n') } }));

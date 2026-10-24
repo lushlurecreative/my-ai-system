@@ -337,5 +337,7 @@ t('shell: reading override.txt with 2>&1 -> allow', decision(bash('cat .claude/o
 t('shell: reading override.txt then writing elsewhere in /tmp -> allow', decision(bash('cat .claude/override.txt && ls > /tmp/x')), 'allow');
 t('shell: redirect into .claude/ -> deny', decision(bash('echo x > .claude/override.txt')), 'deny'); t('shell: quoted append into .claude/ -> deny', decision(bash('echo x >> ".claude/override.txt"')), 'deny');
 t('shell: cp into a quoted .claude/ path -> deny', decision(bash('cp /tmp/a ".claude/hooks/x.mjs"')), 'deny'); t('shell: node writeFileSync into .claude/ -> deny', decision(bash(`node -e "fs.writeFileSync('.claude/hooks/a','x')"`)), 'deny');
+const dnote = JSON.stringify(appr('discussion mode')); t('discussion mode note: no generic opener when there is no topic', /generic question/.test(dnote) && /then stop/.test(dnote), true); t('discussion mode note: no talk of its own pending work unless asked', /pending work/.test(dnote) && /unpushed/.test(dnote), true); appr('task mode');
+t('CLAUDE.md discussion section carries the same two rules', /generic question/.test(fs.readFileSync(path.join(SRC, 'CLAUDE.md'), 'utf8')) && /pending work/.test(fs.readFileSync(path.join(SRC, 'CLAUDE.md'), 'utf8')), true);
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

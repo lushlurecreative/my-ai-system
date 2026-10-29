@@ -390,7 +390,7 @@ uAppr('unlock migrations'); t('unlock: "unlock migrations" opens only the migrat
 fs.writeFileSync(path.join(UL, '.claude/unlocks.json'), JSON.stringify([{ kind: 'file', value: 'src/lib/pricing.ts', ts: Date.now() - 4 * 3600 * 1000 }])); t('unlock: lapses after 3 hours', decision(uEdit('src/lib/pricing.ts')), 'deny');
 fs.writeFileSync(path.join(UL, '.claude/pending.json'), JSON.stringify([{ kind: 'file', value: 'src/lib/pricing.ts', key: 'pricing', ts: Date.now() - 40 * 60 * 1000 }])); uAppr('unlock pricing'); t('unlock: a request older than 30 minutes cannot be unlocked', decision(uEdit('src/lib/pricing.ts')), 'deny');
 fs.rmSync(path.join(UL, '.claude/pending.json'), { force: true }); fs.rmSync(path.join(UL, '.claude/unlocks.json'), { force: true });
-t('unlock: nothing waiting -> Claude is told to ask again in plain words', /nothing is waiting/.test(uAppr('unlock pricing')), true);
+t('unlock: nothing waiting -> Claude is told to ask again in plain words', /matched nothing/.test(uAppr('unlock pricing')), true);
 const uShell = (c) => uHook('protected-paths.mjs', { command: c }, 'Bash'); const uMsg = (m) => uHook('protected-paths.mjs', { message: m }, 'mcp__Lovable__send_message');
 t('unlock: a shell write to a protected file is blocked and names the word', (r1 = uShell('echo x > src/lib/pricing.ts'), decision(r1) === 'deny' && /unlock pricing/.test(uReason(r1))), true);
 uAppr('unlock pricing'); t('unlock: after unlock the shell write is allowed', decision(uShell('echo x > src/lib/pricing.ts')), 'allow');
@@ -403,8 +403,23 @@ t('unlock: two files with the same short name get two different words', ukeys.le
 t('unlock: each block message names its own word', [uEdit('src/lib/pricing.ts'), uEdit('src/server/pricing.ts')].every((r, k) => new RegExp(`unlock ${ukeys[k]}\\b`).test(uReason(r))), true);
 const ur = uApprRaw('unlock pricing'); t('unlock: one word unlocks only that one file', decision(uEdit('src/lib/pricing.ts')) === 'allow' && decision(uEdit('src/server/pricing.ts')) === 'deny', true);
 t('unlock: the approval shows Shaun the full path it unlocked', /src\/lib\/pricing\.ts/.test(ur.systemMessage || ''), true);
-t('unlock: there is no "unlock all"', (uAppr('unlock all'), decision(uEdit('src/server/pricing.ts'))), 'deny'); t('unlock: "unlock all" tells Claude nothing is waiting for it', /nothing is waiting/.test(uAppr('unlock all')), true);
+t('unlock: there is no "unlock all"', (uAppr('unlock all'), decision(uEdit('src/server/pricing.ts'))), 'deny'); t('unlock: "unlock all" tells Claude it matched nothing', /matched nothing/.test(uAppr('unlock all')), true);
 const other = pendingKeys().find((k) => k !== 'pricing'); uAppr(`unlock ${other}`); t('unlock: the second file is opened by its own word', decision(uEdit('src/server/pricing.ts')), 'allow');
+// connector messages honor typed unlocks (words and file names), and report everything still locked at once
+fs.writeFileSync(path.join(UL, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/routes/api/public/portal.$token.submit.ts`\n- `src/routes/api/public/other.ts`\n\n## Protected words\n- `payment`\n'); fs.rmSync(path.join(UL, '.claude/pending.json'), { force: true }); fs.rmSync(path.join(UL, '.claude/unlocks.json'), { force: true });
+const cmsg = 'Fix the payment step in src/routes/api/public/portal.$token.submit.ts and tidy other.ts';
+let cr = uMsg(cmsg); t('connector: a message naming a protected word and two protected files is blocked', decision(cr), 'deny');
+t('connector: the block lists every locked item and every word to type, in one message', ['payment', 'portaltokensubmit', 'other'].every((k) => new RegExp(`unlock [^.]*\\b${k}\\b`).test(uReason(cr))), true);
+uAppr('unlock payment'); t('connector: unlocking only the word still leaves the files locked', decision(uMsg(cmsg)), 'deny');
+uAppr('unlock portaltokensubmit and other'); t('connector: several words in one message unlock several things', decision(uMsg(cmsg)), 'allow');
+fs.rmSync(path.join(UL, '.claude/pending.json'), { force: true }); fs.rmSync(path.join(UL, '.claude/unlocks.json'), { force: true }); uMsg(cmsg);
+const cu = uApprRaw('unlock payment, portaltokensubmit, other').systemMessage || ''; t('connector: the approval shows Shaun every path it unlocked', /portal\.\$token\.submit\.ts/.test(cu) && /other\.ts/.test(cu) && /payment/.test(cu), true);
+fs.rmSync(path.join(UL, '.claude/pending.json'), { force: true }); fs.rmSync(path.join(UL, '.claude/unlocks.json'), { force: true });
+fs.writeFileSync(path.join(UL, '.claude/unlocks.json'), JSON.stringify([{ kind: 'word', value: 'payment', ts: Date.now() }, { kind: 'word', value: 'src/routes/api/public/portal.$token.submit.ts', ts: Date.now() }, { kind: 'word', value: 'src/routes/api/public/other.ts', ts: Date.now() }]));
+t('connector: unlocks recorded as words with a file path (the older form) are honored too', decision(uMsg(cmsg)), 'allow');
+fs.writeFileSync(path.join(UL, '.claude/unlocks.json'), JSON.stringify([{ kind: 'file', value: 'src/routes/api/public/other.ts', ts: Date.now() }, { kind: 'word', value: 'payment', ts: Date.now() }]));
+t('connector: the short file name alone is covered by the unlock of that file', decision(uMsg('tidy other.ts for the payment page')), 'allow'); t('connector: an unlock of one file does not cover another', decision(uMsg('tidy portal.$token.submit.ts for the payment page')), 'deny');
+t('connector: an unrelated message passes untouched', decision(uMsg('Make the header larger on the home page')), 'allow');
 fs.rmSync(UL, { recursive: true, force: true });
 // automatic update
 const AU = fs.mkdtempSync(path.join(os.homedir(), '.ais-auto-')); const M0 = path.join(AU, 'm0'); const B = path.join(AU, 'bare.git'); const M = path.join(AU, 'master'); const M2 = path.join(AU, 'master2'); const P = path.join(AU, 'proj');

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PreToolUse: the OTHER doors to a protected asset: shell writes, git commit/push of protected files, connector messages naming protected words, destructive SQL. DENY. Fails open.
 import fs from 'node:fs'; import { execFileSync } from 'node:child_process';
-import { lists } from './protected-list.mjs'; import { isOverridden, allowedDb, allowedWords, allowedMigrations, unlockHint } from './override.mjs'; import { deny, globRe, discussionOn, quiet } from './common.mjs';
+import { lists } from './protected-list.mjs'; import { isOverridden, allowedDb, allowedWords, allowedMigrations, unlockHint, unlockHintMany } from './override.mjs'; import { deny, globRe, discussionOn, quiet } from './common.mjs';
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const DESTRUCTIVE = /(?<![A-Za-z_])(delete\s+from|drop\s+(?:table|function|schema|policy|trigger|view|index|column)|truncate|alter\s+(?:table|function|policy|role)|grant|revoke|create\s+or\s+replace\s+function)(?![A-Za-z_])/i;
 const WRITES = [/\bsed\s+(?:\S+\s+)*?(?:-[a-zA-Z]*i\b|--in-place)/, /\bperl\s+-[a-zA-Z]*i/, /\btee\b/, /\bcp\b/, /\bmv\b/, /\brm\b/, /\bpatch\b/, /\bgit\s+(?:checkout|restore|apply|am|rm|mv|reset)\b/, />>?/];
@@ -47,14 +47,21 @@ export function check(input) {
       const okDb = allowedDb(cwd); const okMig = allowedMigrations(cwd); let usingAllowed = 0;
       for (const f of files) if (/migrations\/.+\.sql$/.test(f)) { try { const b = fs.readFileSync(`${cwd}/${f}`, 'utf8'); const hit = P.db.filter((d) => b.includes(d)); if (hit.some((d) => !okDb.includes(d))) open.push(f); else if (hit.length) { if (okMig.length && !okMig.some((m) => f === m || f.endsWith('/' + m))) open.push(f); else usingAllowed++; } } catch {} }
       if (usingAllowed > 1) return deny(`Only ONE migration may touch the protected database functions allowed in .claude/override.txt (allow-db); this ${/\bpush\b/.test(cmd) ? 'push' : 'commit'} has ${usingAllowed}.`);
-      if (open.length) return deny(`This git ${/\bpush\b/.test(cmd) ? 'push' : 'commit'} includes protected file(s): ${open.join(', ')}. ${[...new Set(open.map((f) => P.files.find((g) => f === g || globRe(g).test(f)) || f))].map((g) => unlockHint(cwd, 'file', g)).join(' ')}`);
+      if (open.length) return deny(`This git ${/\bpush\b/.test(cmd) ? 'push' : 'commit'} includes protected file(s): ${open.join(', ')}. ${unlockHintMany(cwd, [...new Set(open.map((f) => P.files.find((g) => f === g || globRe(g).test(f)) || f))].map((g) => ({ kind: 'file', value: g })))}`);
     }
     return null;
   }
   if (discussionOn(cwd) && /__(send_message|apply_migration)$/.test(name)) return deny('Discussion mode is on: no connector messages or migrations until Shaun says go (or "task mode"). Reading is fine.');
   if (/__send_message$/.test(name)) {
-    const msg = String(ti.message || ti.prompt || ''); const okW = allowedWords(cwd); const w = [...P.words.filter((x) => !okW.includes(x.toLowerCase())), ...names].find((x) => new RegExp(`(?<![A-Za-z])${esc(x)}(?![A-Za-z])`, 'i').test(msg));
-    return w ? deny(`This connector request mentions "${w}", a protected area (PROTECTED.md). ${unlockHint(cwd, 'word', w.toLowerCase())}`) : null;
+    // Every protected word and every protected file name the message mentions must be unlocked (typed unlock or override.txt). All that are still locked are reported together, so Shaun can unlock them in one message.
+    const msg = String(ti.message || ti.prompt || ''); const okW = allowedWords(cwd); const mentioned = (x) => new RegExp(`(?<![A-Za-z])${esc(x)}(?![A-Za-z])`, 'i').test(msg); const hits = [];
+    for (const wd of P.words) if (!okW.includes(wd.toLowerCase()) && mentioned(wd)) hits.push({ kind: 'word', value: wd.toLowerCase() });
+    for (const n of names) {
+      if (!mentioned(n)) continue; const full = plain.find((f) => f === n || f.split('/').pop() === n) || n;
+      if (okW.includes(n.toLowerCase()) || okW.includes(full.toLowerCase()) || isOverridden(cwd, full)) continue;
+      if (!hits.some((h) => h.value === full)) hits.push({ kind: 'file', value: full });
+    }
+    return hits.length ? deny(`This connector request mentions protected areas (${hits.map((h) => h.value).join(', ')}) (PROTECTED.md). Hard stop until Shaun agrees. ${unlockHintMany(cwd, hits)}`) : null;
   }
   if (/__(query_database|execute_sql|apply_migration|run_sql)$/.test(name)) {
     const sql = String(ti.sql || ti.query || '');

@@ -29,6 +29,7 @@ export function requestUnlock(root, kind, value) {
     fs.mkdirSync(path.dirname(pf(root)), { recursive: true }); fs.writeFileSync(pf(root), JSON.stringify(rest)); return key;
   } catch { return unlockKey(kind, value); /* the block still applies */ }
 }
+export const unlockHintMany = (root, items) => `Tell Shaun in plain words (no file names, no code terms) what you want to change and why it is safe, then ask him to type: unlock ${[...new Set(items.map((x) => requestUnlock(root, x.kind, x.value)))].join(' ')}. After he does, retry.`;
 export const unlockHint = (root, kind, value) => `Tell Shaun in plain words (no file names, no code terms) what you want to change and why it is safe, then ask him to type: unlock ${requestUnlock(root, kind, value)}. After he does, retry.`;
 // One word unlocks exactly one thing. A bare "unlock" works only when exactly one thing is waiting. There is no "all".
 export function grantUnlock(root, word) {

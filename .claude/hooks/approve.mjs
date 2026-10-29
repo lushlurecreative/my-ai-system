@@ -38,8 +38,12 @@ export function setDiscussion(root, on) {
 }
 const discussionWas = (root) => fs.existsSync(path.join(root, '.claude/discussion.json'));
 // "unlock pricing" / "yes, unlock" at the START of a short message of his own. The word comes from the block message Claude saw.
-const UNLOCK = /^\s*(?:(?:yes|yep|yeah|ok|okay|sure)\b[\s,.!:-]*)?unlock(?:\s+(?:the\s+)?([\w.\-/]+))?\s*[.!]?\s*$/i;
-export function parseUnlock(prompt) { const p = String(prompt || '').trim().replace(/^[\s"'`>*\u201c-]+/, ''); if (!p || p.length > 120) return null; const m = p.match(UNLOCK); return m ? { word: (m[1] || '').replace(/^.*\//, '').replace(/\.[^.]*$/, '') } : null; }
+const UNLOCK = /^\s*(?:(?:yes|yep|yeah|ok|okay|sure)\b[\s,.!:-]*)?unlock\b([^\n]*?)\s*[.!]?\s*$/i;
+export function parseUnlock(prompt) {
+  const p = String(prompt || '').trim().replace(/^[\s"'`>*“-]+/, ''); if (!p || p.length > 160) return null; const m = p.match(UNLOCK); if (!m) return null;
+  const raw = m[1].split(/[\s,]+/).filter((w) => w && !/^(?:and|the)$/i.test(w)); if (raw.length > 5 || raw.some((w) => !/^[\w.\-/]+$/.test(w))) return null;
+  return { words: raw.map((w) => w.replace(/^.*\//, '').replace(/\.[^.]*$/, '')) };
+}
 // "yes, update": Shaun's own message runs the update, here in the hook, so nothing updates without his word and Claude never has to run the installer.
 const UPDATE = /^\s*(?:(?:ok|okay|sure)\b[\s,.!:-]*)?yes\b[\s,.!:-]*update(?:\s+(?:the\s+)?system)?\s*[.!]?\s*$/i;
 export const parseUpdate = (prompt) => { const p = String(prompt || '').trim().replace(/^[\s"'`>*“-]+/, ''); return !!p && p.length <= 60 && UPDATE.test(p); };
@@ -68,7 +72,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // `shown` = lines Shaun sees himself (systemMessage)
     if (parseUpdate(input.prompt)) { const u = runUpdate(); shown.push(u.msg); notes.push(`${u.msg} Tell Shaun the result in one plain sentence.`); }
     const unl = parseUnlock(input.prompt);
-    if (unl) { const got = grantUnlock(root, unl.word); if (got.length) { const list = got.map((x) => x.value).join(', '); shown.push(`Unlocked for 3 hours: ${list}`); notes.push(`Shaun unlocked ${list} for 3 hours. Make exactly the change you described, nothing more, then tell him in plain words that it is done. Do not mention files or code to him.`); } else notes.push('Shaun typed unlock, but nothing is waiting for that word (one word unlocks one thing; there is no "unlock all"). Ask again in plain words, and give him the exact word to type (the block message names it).'); }
+    if (unl) {
+      const got = unl.words.length ? unl.words.flatMap((w) => grantUnlock(root, w)) : grantUnlock(root, '');
+      if (got.length) { const list = got.map((x) => x.value).join(', '); shown.push(`Unlocked for 3 hours: ${list}`); notes.push(`Shaun unlocked ${list} for 3 hours. Make exactly the change you described, nothing more, then tell him in plain words that it is done. Do not mention files or code to him.`); }
+      if (!got.length || (unl.words.length && got.length < unl.words.length)) notes.push('Some of what Shaun typed matched nothing that is waiting (one word unlocks one thing; there is no "unlock all"). Ask again in plain words for what is still locked, and give him the exact words to type (the block message names them).');
+    }
     const disc = parseDiscuss(input.prompt);
     if (disc === 'on') { setDiscussion(root, true); notes.push('Discussion mode is ON (Shaun asked for it). Talk with him like a thoughtful partner: read files, code and read-only data freely to ground what you say, give your view and a clear recommendation (not a menu of options), and end however is natural, including a question. Change no files and send no connector messages; the hooks block them. Write no task card, no Done. line, no NEXT.md list. Do not open with a generic question like "what do you want to talk about". If he gave no topic, say in one line that discussion mode is on and that "go" or "task mode" leaves it, then stop. If he did give a topic, answer it. Do not mention your own pending work, unpushed changes, reviewers or "say go to push" unless he asks or it directly bears on what he raised. If he states a decision, you may append it to docs/RULINGS.md.'); }
     else if (disc === 'off') { setDiscussion(root, false); notes.push('Discussion mode is OFF (Shaun ended it). Task rules apply again.'); }

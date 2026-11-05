@@ -108,7 +108,8 @@ const goFile = path.join(T, '.claude/approvals.json'); fs.rmSync(goFile, { force
 task('NONE', [], [], ''); t('open a task with no go -> deny', decision(activate()), 'deny');
 prompt("Don't fucking stop till you have a solution. Research, find, investigate, implement a solution."); t('a pasted frustration quote is not a go: still deny', decision(activate()), 'deny');
 t('setting Status: NONE needs no go', decision(run('scope-guard.mjs', { tool_name: 'Edit', tool_input: { file_path: path.join(T, 'docs/TASK.md'), old_string: 'Status: ACTIVE', new_string: 'Status: NONE' } })), 'allow');
-prompt('go'); t('after Shaun says go, opening a task -> allow', decision(activate()), 'allow'); t('the go is used up: a second task -> deny', decision(activate()), 'deny');
+prompt('go'); t('after Shaun says go, opening a task -> allow', decision(activate()), 'allow'); t('a plain go is a standing approval: a second task opens too', decision(activate()), 'allow');
+fs.rmSync(goFile, { force: true }); prompt('option 1'); t('a specific pick opens one task -> allow', decision(activate()), 'allow'); t('a specific pick is used up: a second task -> deny', decision(activate()), 'deny');
 prompt('option 2'); t('"option 2" is a go', decision(activate()), 'allow');
 fs.writeFileSync(goFile, JSON.stringify([{ name: '__go__', ts: Date.now() - 7 * 3600 * 1000 }])); t('a go older than 6 hours -> deny', decision(activate()), 'deny');
 task('ACTIVE', ['src/pages/**'], [], ''); fs.rmSync(goFile, { force: true }); t('editing TASK.md while already ACTIVE needs no go', decision(activate()), 'allow');
@@ -155,7 +156,7 @@ t('allow-words: a listed word is allowed', msg('fix the entitlement check and th
 ovr('allow-words: entitlement\nexpires: 2020-01-01T00:00:00Z\n'); t('expired override: words blocked again', msg('fix the entitlement check'), 'deny');
 ovr('allow-words: entitlement\nexpires: soon\n'); t('unreadable expiry counts as expired', msg('fix the entitlement check'), 'deny');
 ovr('allow-words: entitlement\nexpires: 2999-01-01T00:00:00Z\n'); t('future expiry: still allowed', msg('fix the entitlement check'), 'allow');
-ovr('allow: src/lib/pricing.ts\nexpires: 2020-01-01T00:00:00Z\n'); task('ACTIVE', ['src/lib/pricing.ts'], [], ''); t('expired override: an unlocked file is protected again', decision(edit('src/lib/pricing.ts')), 'deny');
+ovr('allow: src/lib/pricing.ts\nexpires: 2020-01-01T00:00:00Z\n'); task('ACTIVE', ['src/pages/**'], [], ''); t('expired override: an unlocked file is protected again', decision(edit('src/lib/pricing.ts')), 'deny');
 ovr('allow-db: user_owns_deal\nallow-words: checkout\n'); t('allow-db and allow-words do not unlock a protected file', decision(edit('src/lib/pricing.ts')), 'deny');
 fs.mkdirSync(path.join(T, 'supabase/migrations'), { recursive: true }); const mig = (n, body) => fs.writeFileSync(path.join(T, `supabase/migrations/${n}.sql`), body); const commit = () => decision(pp('Bash', { command: 'git add supabase/migrations && git commit -m "migration"' })); const push = () => decision(pp('Bash', { command: 'git push origin main' }));
 fs.rmSync(ovFile, { force: true }); mig('001_a', 'create or replace function public.user_has_report_entitlement() returns boolean as $$ select true $$ language sql;');
@@ -238,13 +239,14 @@ let missing = ''; try { execSync(`node "${SRC}/scripts/scan-library.mjs" "${L}/n
 fs.rmSync(L, { recursive: true, force: true }); fs.rmSync(rep, { force: true });
 // ---- additions: checkbox done-gate, analysis scope ledger, permission-seeking stop, persistence ----
 const stopS = (msg, sid) => run('done-check.mjs', { session_id: sid, last_assistant_message: msg });
+const NEXT_PLAIN = 'Done. The page loads and the mobile view was checked. I recommend fixing the mobile header next. Type go.';
 const NEXT3 = "Done.\n1. Fix the mobile header. Needs nothing from Shaun.\n2. Re-check the pricing page. Needs nothing from Shaun.\nWhich numbers should I run?";
 task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] page loads', '[ ] mobile checked'] }); t('done claimed with an unticked Done means line -> block', decision(stopS('Done.', 'cb1')), 'block');
 task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['plain line with no checkbox'] }); t('Done means line without a tick -> block', decision(stopS('Done.', 'cb2')), 'block');
-task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] page loads', '[x] mobile checked'] }); t('all Done means ticked + evidence + PASS + next-3 -> allow', decision(stopS(NEXT3, 'cb3')), 'allow');
+task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] page loads', '[x] mobile checked'] }); t('all Done means ticked + evidence + PASS + one recommended next step and a request for go -> allow', decision(stopS(NEXT_PLAIN, 'cb3')), 'allow'); t('DONE reply that ends with a numbered list of things to type -> block', decision(stopS(NEXT3, 'cb3b')), 'block');
 task('DONE', ['docs/**'], ['screenshot docs/notes/x.png'], 'PASS', { type: 'ANALYSIS', done: ['[x] findings written'] }); t('ANALYSIS done with no Scope ledger -> block', decision(stopS('Done.', 'sl1')), 'block');
 task('DONE', ['docs/**'], ['screenshot docs/notes/x.png'], 'PASS', { type: 'ANALYSIS', done: ['[x] findings written'], ledger: ['[x] homepage', '[ ] glossary page', '[ ] extension'] }); t('ANALYSIS done with 2 ledger items open -> block', decision(stopS('Done.', 'sl2')), 'block');
-task('DONE', ['docs/**'], ['screenshot docs/notes/x.png'], 'PASS', { type: 'ANALYSIS', done: ['[x] findings written'], ledger: ['[x] homepage', '[x] glossary page', '[x] extension, out of scope: store page will not load, checked repo instead'] }); t('ANALYSIS with full ledger (one out of scope with reason) -> allow', decision(stopS(NEXT3, 'sl3')), 'allow');
+task('DONE', ['docs/**'], ['screenshot docs/notes/x.png'], 'PASS', { type: 'ANALYSIS', done: ['[x] findings written'], ledger: ['[x] homepage', '[x] glossary page', '[x] extension, out of scope: store page will not load, checked repo instead'] }); t('ANALYSIS with full ledger (one out of scope with reason) -> allow', decision(stopS(NEXT_PLAIN, 'sl3')), 'allow');
 task('ACTIVE', ['src/pages/**'], [], ''); t('mid-task "Want me to fix it?" -> block', decision(stopS('The header is misaligned on mobile. Want me to fix it?', 'pm1')), 'block'); t('mid-task "Shall I proceed?" -> block', decision(stopS('I found two ways to do this. Shall I proceed?', 'pm2')), 'block');
 t('mid-task real decision question -> allow', decision(stopS('Should the price show monthly or yearly?', 'pm3')), 'allow'); t('mid-task named blocker -> allow', decision(stopS('Blocked on a login only you have: the PostHog dashboard. I tried the API key and the export link; both need your account.', 'pm4')), 'allow');
 task('NONE', [], [], ''); t('no active task: an offer is not blocked by this guard', decision(stopS('That is the plan. Want me to draft it?', 'pm5')), 'allow');
@@ -253,8 +255,8 @@ task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: 
 const L2 = '1. Fix the mobile header. Needs nothing from Shaun.\n2. Re-check the pricing page. Needs nothing from Shaun.';
 t('autopilot off: list with one of the two startable items -> block', decision(stopS('Done.\n1. Fix the mobile header. Needs nothing.\nWhich numbers should I run?', 'ap1')), 'block');
 t('autopilot off: both startable items listed but no "which numbers" -> block', decision(stopS(`Done.\n${L2}`, 'ap2')), 'block');
-t('autopilot off: both items listed and asks which numbers -> allow', decision(stopS(`Done.\n${L2}\nWhich numbers should I run?`, 'ap3')), 'allow');
-t('autopilot off: more items than needed, no cap -> allow', decision(stopS(`Done.\n${L2}\n3. Draft the sub-goals. Needs nothing.\n4. Audit the footer. Needs nothing.\n5. Check the 404 page. Needs nothing.\nWhich numbers should I run?`, 'ap4')), 'allow');
+t('autopilot off: a numbered list of what to type, even with "which numbers" -> block', decision(stopS(`Done.\n${L2}\nWhich numbers should I run?`, 'ap3')), 'block'); t('autopilot off: one recommended next step and a request for go -> allow', decision(stopS('Done. I recommend fixing the mobile header next. Type go.', 'ap3b')), 'allow'); t('autopilot off: nothing asked at all while items can start -> block', decision(stopS('Done.', 'ap3c')), 'block');
+t('autopilot off: a long numbered list -> block', decision(stopS(`Done.\n${L2}\n3. Draft the sub-goals. Needs nothing.\n4. Audit the footer. Needs nothing.\n5. Check the 404 page. Needs nothing.\nWhich numbers should I run?`, 'ap4')), 'block');
 t('autopilot off: an option that says pick something from the list -> block', decision(stopS(`Done.\n${L2}\n3. Pick something from the list.\nWhich numbers should I run?`, 'ap5')), 'block');
 fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Rotate the leaked token (Shaun's login only). | sub-goal: none\n\nParked ideas (not ranked):\n- x\n"); t('autopilot off: nothing startable, says so -> allow', decision(stopS('Done. Nothing on the list can start without you: the token rotation needs your login.', 'ap6')), 'allow'); t('autopilot off: nothing startable and says nothing about it -> block', decision(stopS('Done.', 'ap7')), 'block');
 fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Fix the mobile header. | sub-goal: 2\n2. Re-check the pricing page. | sub-goal: 5\n3. Rotate the leaked token (Shaun's login only). | sub-goal: none\n\nParked ideas (not ranked):\n- x\n");
@@ -306,8 +308,17 @@ t('glob project bypass: bash heredoc writing a protected file -> deny', gRun('ba
 t('glob project bypass: no-space redirect into a protected file -> deny', gRun('echo x>src/lib/pricing.ts'), 'deny'); t('glob project bypass: cat heredoc piped to bash writing a protected file -> deny', gRun('cat <<EOF | bash\necho x > src/lib/pricing.ts\nEOF'), 'deny');
 t('glob project legit: cat heredoc piped to git commit -F - naming a protected file -> allow', gRun('cat <<EOF | git commit -F -\nreword src/lib/pricing.ts -> ok\nEOF'), 'allow'); t('glob project legit: single-quoted commit message naming a protected file -> allow', gRun("git commit -m 'tweak src/lib/pricing.ts -> ok'"), 'allow');
 t('glob project bypass: bash -m with a hidden write to a protected file -> deny', gRun('bash -m "echo x > src/lib/pricing.ts"'), 'deny');
+{
+  const gcard = (status, allowed) => fs.writeFileSync(path.join(G, 'docs/TASK.md'), `# Current task\n\nStatus: ${status}\nType: BUILD\n\nTask:\n- Change pricing\n\nAllowed paths:\n${allowed.map((a) => `- ${a}`).join('\n')}\n\nTools needed:\n- none\n\nDone means:\n- [x] works\n\nEvidence:\n- ok\n\nReviewer verdict:\n- PASS\n`);
+  fs.mkdirSync(path.join(G, 'src/lib'), { recursive: true }); fs.writeFileSync(path.join(G, 'src/lib/pricing.ts'), 'export const a = 77;\n'); gg('git add src/lib/pricing.ts');
+  gcard('NONE', ['src/lib/pricing.ts']); t('card: committing a protected file with no active task -> deny', gRun('git commit -m "price"'), 'deny');
+  gcard('ACTIVE', ['src/pages/**']); t('card: committing a protected file the card does not name -> deny', gRun('git commit -m "price"'), 'deny');
+  gcard('ACTIVE', ['src/lib/pricing.ts']); t('card: committing a protected file the ACTIVE card names -> allow', gRun('git commit -m "price"'), 'allow');
+  gcard('DONE', ['src/lib/pricing.ts']); t('card: committing it when the card is DONE (the normal end of a task) -> allow', gRun('git commit -m "price"'), 'allow');
+  gg('git reset -q src/lib/pricing.ts'); fs.rmSync(path.join(G, 'src/lib/pricing.ts'), { force: true });
+}
 for (const d of [G, gBare]) fs.rmSync(d, { recursive: true, force: true });
-const readGoCount = () => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/approvals.json'), 'utf8')).filter((x) => x.name === '__go__').length; } catch { return 0; } };
+const readGoCount = () => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/approvals.json'), 'utf8')).filter((x) => x.name === '__go__' || x.name === '__goall__').length; } catch { return 0; } };
 // ---- additions: discussion mode (a real conversation; every edit block stays) ----
 const dflag = path.join(T, '.claude/discussion.json'); fs.rmSync(dflag, { force: true });
 fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6 }));
@@ -486,5 +497,53 @@ t('legit: git commit with two -m messages naming protected files -> allow', deci
 // the master system folder is not touched from a project
 for (const c of ['git -C ~/my-ai-system commit -m x', 'git -C ~/my-ai-system push origin main', 'cd ~/my-ai-system && git commit -am x', 'echo x > ~/my-ai-system/CLAUDE.md', 'cp /tmp/a ~/my-ai-system/install.sh', 'rm ~/my-ai-system/VERSION', 'sed -i s/a/b/ ~/my-ai-system/install.sh', 'cd ~/my-ai-system && echo x > VERSION', 'git -C ~/my-ai-system remote set-url origin x', 'tee ~/my-ai-system/VERSION']) t(`master folder: ${c} -> deny`, decision(bash(c)), 'deny');
 for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system fetch', 'cat ~/my-ai-system/VERSION', 'bash ~/my-ai-system/install.sh .', 'git commit -m "synced from my-ai-system"', 'cd ~/my-ai-system && cat VERSION && cd - && git status', 'ls ~/my-ai-system']) t(`master folder: ${c} -> allow`, decision(bash(c)), 'allow');
+// ---- additions: the task card is the approval; audit log; standing go; no numbered "what to type" lists ----
+{
+  const { goKind } = await import(`${SRC}/.claude/hooks/approve.mjs`);
+  for (const y of ['go', 'Go.', 'go ahead', 'yes', 'Yes, go', 'just do it', 'do it', 'all of them', 'execute all', 'go on all', 'proceed', 'approved']) t(`standing go: "${y}"`, goKind(y), 'all');
+  for (const y of ['option 1', '3', 'B', 'start the header fix', "let's fix it", 'go draft the sub-goals file', 'Do option 1']) t(`one-task go: "${y}"`, goKind(y), 'one');
+  for (const n of ['What do you think?', 'go back and check the folder', 'Do not talk to me like that']) t(`not a go: "${n}"`, goKind(n), null);
+  fs.rmSync(goFile, { force: true }); task('NONE', [], [], ''); prompt('execute all'); t('standing go: the first task opens', decision(activate()), 'allow'); t('standing go: the second task opens without a new go', decision(activate()), 'allow'); t('standing go: a third too', decision(activate()), 'allow');
+  fs.writeFileSync(goFile, JSON.stringify([{ name: '__goall__', ts: Date.now() - 7 * 3600 * 1000 }])); t('standing go lapses after 6 hours', decision(activate()), 'deny'); fs.rmSync(goFile, { force: true });
+  fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Fix the mobile header. | sub-goal: 2\n2. Re-check the pricing page. | sub-goal: 5\n\nParked ideas (not ranked):\n- x\n");
+  fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6 })); task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
+  fs.writeFileSync(goFile, JSON.stringify([{ name: '__goall__', ts: Date.now() }]));
+  t('standing go in force: DONE reply that stops with a recommendation and asks for go -> block', decision(stopS(NEXT_PLAIN, 'sg1')), 'block');
+  task('ACTIVE', ['src/pages/**'], [], ''); t('standing go in force: the next task already opened (ACTIVE) -> allow', decision(stopS('Started the next item: the mobile header; the card is open.', 'sg2')), 'allow'); task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
+  t('standing go in force: "Autopilot paused:" with one plain ask -> allow', decision(stopS('Autopilot paused: only your admin sign-in is left. Please sign in on the admin page.', 'sg3')), 'allow');
+  fs.rmSync(goFile, { force: true }); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: true, maxHelpers: 6 }));
+  t('autopilot on: "Autopilot paused:" followed by a numbered list -> block', decision(stopS('Autopilot paused:\n1. Rotate the token.\n2. Sign in to admin.', 'sg4')), 'block');
+  fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6 }));
+}
+{
+  // the task card is the approval for protected files
+  const CD = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-card-')); execSync(`bash "${SRC}/install.sh" "${CD}"`, { stdio: 'ignore' });
+  fs.writeFileSync(path.join(CD, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/lib/pricing.ts`\n- `supabase/migrations/**`\n\n## Protected words\n- `checkout`\n- `analyze-deal`\n');
+  const card = (status, allowed, o = {}) => fs.writeFileSync(path.join(CD, 'docs/TASK.md'), `# Current task\n\nStatus: ${status}\nType: ${o.type || 'BUILD'}\n\nTask:\n- ${o.title || 'Change the pricing tiers'}\n\nAllowed paths:\n${allowed.map((a) => `- ${a}`).join('\n')}\n\nTools needed:\n- none\n\nDone means:\n- [ ] works\n\nEvidence:\n\nReviewer verdict:\n- \n`);
+  const cHook = (hook, ti, name = 'Edit') => { const o = execSync(`node "${CD}/.claude/hooks/${hook}"`, { input: JSON.stringify({ cwd: CD, tool_name: name, tool_input: ti }), encoding: 'utf8' }); return o ? JSON.parse(o) : null; };
+  const cEdit = (p) => cHook('scope-guard.mjs', { file_path: path.join(CD, p) }); const cBash = (c) => cHook('scope-guard.mjs', { command: c }, 'Bash'); const cShell = (c) => cHook('protected-paths.mjs', { command: c }, 'Bash'); const cMsg = (m) => cHook('protected-paths.mjs', { message: m }, 'mcp__Lovable__send_message');
+  const logPath = path.join(CD, '.claude/protected-edits.log'); const logLines = () => { try { return fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean); } catch { return []; } };
+  card('ACTIVE', ['src/pages/**']); t('card: a protected file the card does not name is blocked', decision(cEdit('src/lib/pricing.ts')), 'deny'); t('card: nothing is logged for a blocked edit', logLines().length, 0);
+  card('ACTIVE', ['src/**']); t('card: a broad pattern such as src/** does not count as naming the file', decision(cEdit('src/lib/pricing.ts')), 'deny');
+  card('ACTIVE', ['src/lib/pricing.ts']); t('card: an ACTIVE card that names the protected file allows the edit with no unlock word', decision(cEdit('src/lib/pricing.ts')), 'allow');
+  t('card: the edit is logged with file, task and time', logLines().length === 1 && /^\d{4}-\d{2}-\d{2}T[\d:.]+Z\tsrc\/lib\/pricing\.ts\tChange the pricing tiers$/.test(logLines()[0]), true);
+  cEdit('src/lib/pricing.ts'); t('card: the log only grows (append-only)', logLines().length, 2);
+  t('card: other files outside the card are still blocked', decision(cEdit('src/lib/other.ts')), 'deny');
+  card('DONE', ['src/lib/pricing.ts']); t('card: a DONE card no longer allows edits', decision(cEdit('src/lib/pricing.ts')), 'deny'); card('NONE', ['src/lib/pricing.ts']); t('card: no task, no edit', decision(cEdit('src/lib/pricing.ts')), 'deny');
+  card('ACTIVE', ['src/lib/pricing.ts'], { type: 'ANALYSIS' }); t('card: an ANALYSIS task cannot edit code even if it lists the file', decision(cEdit('src/lib/pricing.ts')), 'deny');
+  card('ACTIVE', ['supabase/migrations/**']); t('card: a protected folder is open when the card lists that folder pattern', decision(cEdit('supabase/migrations/001.sql')), 'allow');
+  card('ACTIVE', ['CLAUDE.md', 'PROTECTED.md', '.claude/hooks/common.mjs', '.claude/settings.json', '.claude/protected-edits.log']);
+  for (const f of ['CLAUDE.md', 'PROTECTED.md', '.claude/hooks/common.mjs', '.claude/settings.json', '.claude/protected-edits.log']) t(`card: ${f} stays hard-blocked even when the card lists it`, decision(cEdit(f)), 'deny');
+  card('ACTIVE', ['src/lib/pricing.ts']); fs.rmSync(logPath, { force: true });
+  t('card: a shell write to a card-approved protected file is allowed', decision(cBash('echo x > src/lib/pricing.ts')) === 'allow' && decision(cShell('echo x > src/lib/pricing.ts')) === 'allow', true);
+  t('card: that shell write is logged too', logLines().some((l) => /src\/lib\/pricing\.ts/.test(l)), true);
+  card('ACTIVE', ['src/pages/**']); t('card: the same shell write without the card is blocked', decision(cShell('echo x > src/lib/pricing.ts')), 'deny');
+  // connector messages
+  card('ACTIVE', ['src/pages/**'], { title: 'Fix the header' }); t('connector: a protected word with no card naming it is blocked', decision(cMsg('Change the checkout button colour')), 'deny');
+  card('ACTIVE', ['src/pages/**'], { title: 'Change the checkout button colour' }); t('connector: the active card names the area -> the message passes with no unlock word', decision(cMsg('Change the checkout button colour')), 'allow');
+  card('ACTIVE', ['supabase/functions/analyze-deal/index.ts'], { title: 'Fix analyze-deal rounding' }); t('connector: a card naming the file lets a message about it pass', decision(cMsg('In analyze-deal fix the rounding')), 'allow'); t('connector: but another protected word still blocks', decision(cMsg('In analyze-deal fix the rounding and checkout')), 'deny');
+  card('DONE', ['src/pages/**'], { title: 'Change the checkout button colour' }); t('connector: a DONE card is not an approval', decision(cMsg('Change the checkout button colour')), 'deny');
+  fs.rmSync(CD, { recursive: true, force: true });
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

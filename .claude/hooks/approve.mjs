@@ -27,7 +27,16 @@ const GO = [
   /^(?:let'?s|please)\s+(?:do|fix|go|start|build|run|finish|continue)\b/i,
   new RegExp('^' + YES + '(?:please\\s+)?(?:do|fix|build|run|finish)\\b', 'i'),
 ];
-export function parseGo(prompt) { const p = String(prompt || '').trim().replace(/^[\s"'`>*\u201c-]+/, ''); return !!p && GO.some((r) => r.test(p)); }
+// A plain approval ("go", "yes", "do it", "all of them", "execute all") is a standing go that covers everything he named or that was listed in the message he answered. A specific pick ("option 2", "3", "start the header fix") opens just that one task.
+const GO_ALL = [
+  new RegExp('^' + YES + '+$', 'i'),
+  new RegExp('^' + YES + '?go\\b(?!\\s+(?:to|back|into|through|over)\\b)[\\s,.!]*(?:(?:ahead|on)\\b[\\s,.!]*)?(?:(?:on|with)\\s+)?(?:all(?:\\s+of\\s+them)?|everything|the\\s+(?:whole\\s+)?list)?[\\s.!]*$', 'i'),
+  new RegExp('^' + YES + '?(?:just\\s+)?do\\s+(?:it|that|this|all|both|them|everything|whatever)\\b', 'i'),
+  /^(?:execute|run|do)\s+all\b/i, /^all\s+of\s+them\b/i, /^(?:yes[\s,.!]*)?(?:all|everything)[\s.!]*$/i, /^(?:proceed|approved?)\b/i,
+];
+const cleanGo = (prompt) => String(prompt || '').trim().replace(/^[\s"'`>*“-]+/, '');
+export function goKind(prompt) { const p = cleanGo(prompt); if (!p) return null; if (GO_ALL.some((r) => r.test(p))) return 'all'; return GO.some((r) => r.test(p)) ? 'one' : null; }
+export function parseGo(prompt) { return !!goKind(prompt); }
 // Discussion mode: Shaun says it at the START of his message ("let's talk", "discussion mode"). A go, "task mode" or "back to work" ends it.
 const DISC_ON = /^\s*(?:(?:ok(?:ay)?|alright|so|hey|right)\b[\s,.!:-]*)?(?:(?:let'?s|lets|i want to|i'd like to|i would like to|can we|could we)\s+(?:just\s+|really\s+)?(?:talk|discuss|chat|brainstorm|think|have a (?:talk|discussion|chat|conversation))\b|(?:go\s+(?:in\s*)?to|switch\s+(?:in)?to|enter|start|turn on|put (?:this|us|it) in|use)\s+(?:a\s+)?discussion mode\b|discussion mode\b)/i;
 const DISC_OFF = /^\s*(?:(?:ok(?:ay)?|alright|so)\b[\s,.!:-]*)?(?:(?:exit|leave|end|stop|turn off|switch off|done with|out of)\s+(?:the\s+)?discussion(?:\s+mode)?\b|task mode\b|back to (?:work|task mode|building|the task)\b|stop (?:discussing|talking)\b)/i;
@@ -62,7 +71,7 @@ export function runUpdate() {
 }
 export function record(root, names) {
   const f = path.join(root, '.claude/approvals.json'); let cur = []; try { cur = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
-  const now = Date.now(); const keep = (Array.isArray(cur) ? cur : []).filter((x) => x && now - Number(x.ts) < 24 * 3600 * 1000 && !(names.includes('__go__') && x.name === '__go__'));
+  const now = Date.now(); const keep = (Array.isArray(cur) ? cur : []).filter((x) => x && now - Number(x.ts) < 24 * 3600 * 1000 && !(names.includes('__go__') && x.name === '__go__') && !(names.includes('__goall__') && x.name === '__goall__'));
   for (const n of names) keep.push({ name: n, ts: now });
   fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(keep));
 }
@@ -80,7 +89,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const disc = parseDiscuss(input.prompt);
     if (disc === 'on') { setDiscussion(root, true); notes.push('Discussion mode is ON (Shaun asked for it). Talk with him like a thoughtful partner: read files, code and read-only data freely to ground what you say, give your view and a clear recommendation (not a menu of options), and end however is natural, including a question. Change no files and send no connector messages; the hooks block them. Write no task card, no Done. line, no NEXT.md list. Do not open with a generic question like "what do you want to talk about". If he gave no topic, say in one line that discussion mode is on and that "go" or "task mode" leaves it, then stop. If he did give a topic, answer it. Do not mention your own pending work, unpushed changes, reviewers or "say go to push" unless he asks or it directly bears on what he raised. If he states a decision, you may append it to docs/RULINGS.md.'); }
     else if (disc === 'off') { setDiscussion(root, false); notes.push('Discussion mode is OFF (Shaun ended it). Task rules apply again.'); }
-    if (disc !== 'on' && parseGo(input.prompt)) { if (discussionWas(root)) { setDiscussion(root, false); notes.push('Discussion mode is OFF (Shaun said go).'); } record(root, ['__go__']); notes.push('Shaun said go. You may open ONE task now (set Status: ACTIVE in docs/TASK.md). This go is used up when the task opens. Do what his message asks, nothing more.'); }
+    if (disc !== 'on' && parseGo(input.prompt)) { if (discussionWas(root)) { setDiscussion(root, false); notes.push('Discussion mode is OFF (Shaun said go).'); } const gk = goKind(input.prompt); if (gk === 'all') { record(root, ['__goall__']); notes.push('Shaun approved. That covers everything he named, or that was listed in the message he answered. Open each task in turn (set Status: ACTIVE in docs/TASK.md) and work through them one after another without asking again; this approval lasts 6 hours. Stop only for a real blocker: a password or login, money or a card, a physical step, or a real business decision. Ask for that in one short message.'); } else { record(root, ['__go__']); notes.push('Shaun said go for one item. You may open ONE task now (set Status: ACTIVE in docs/TASK.md). This go is used up when the task opens. Do what his message asks, nothing more.'); } }
     if (names.length) { record(root, names); notes.push(`Shaun approved: ${names.join(', ')}. For installs, commands that name them are allowed for 24 hours; for "agent:<name>", you may write .claude/agents/<name>.md for 24 hours. Do exactly what he approved, nothing more.`); }
     if (notes.length) process.stdout.write(JSON.stringify({ ...(shown.length ? { systemMessage: shown.join(' | ') } : {}), hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: notes.join(' ') } }));
   } catch { /* fail open: no approval */ }

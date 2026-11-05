@@ -2,7 +2,7 @@
 // Stop hook. (1) Ends by announcing work -> block (max 2 in a row per reason). (2) Claims done but TASK.md lacks Evidence or Reviewer PASS, or the reviewer agent never ran this session -> block once.
 // (1b) Asks permission to continue mid-task -> block. (1c) Claims done with unticked Done means, or an ANALYSIS with an open Scope ledger -> block. (3) TASK is DONE with a reviewer PASS: autopilot off needs a numbered list of every NEXT item that can start now plus "which numbers"; autopilot on needs the next task started, not a question. Fails open.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
-import { readTask, system, discussionOn } from './common.mjs';
+import { readTask, system, discussionOn, readGoAll } from './common.mjs';
 const NEEDS_SHAUN = /\bShaun(?:'s)?\b[^|]{0,60}\b(?:action|login|logins|decision|decides|decide|spend|approval|authoriz\w+|unlock|setup|set up|sign-in|only|led)\b|\bneeds? (?:Shaun|your)\b|\b(?:logins?|credentials?|rotate|spend|admin sign-in)\b|\bseparately authorized\b|\bparked\b|\byou(?:r|'ll|'d)?\b|\btype "yes|\bsay (?:when|anything)\b/i;
 export function startableItems(root) {
   let t = ''; try { t = fs.readFileSync(path.join(root, 'docs/NEXT.md'), 'utf8'); } catch { return []; }
@@ -60,12 +60,13 @@ export function judge(message, root, transcriptPath) {
     if (transcriptPath && !reviewerRan(transcriptPath)) return 'TASK.md says the reviewer passed, but no reviewer agent ran in this session. Run it now and record the real verdict.';
   }
   if (t.status === 'DONE' && t.evidence > 0 && /PASS/i.test(t.verdict) && !(transcriptPath && isQuestion(lastUserText(transcriptPath)))) {
-    if (system(root).autopilot) { if (!/\bAutopilot paused:/i.test(text)) return 'Autopilot is on and this task is DONE with a reviewer PASS. Do not end with a question. Take the top item in docs/NEXT.md that needs nothing from Shaun (skip items that need his login, money, a protected unlock or a decision, and anything a ruling in docs/RULINGS.md parks), move it into docs/TASK.md as a new task and start it. If nothing on the list can start without him, end with "Autopilot paused:" and a numbered list of what needs him and why.'; }
+    const keepGoing = system(root).autopilot || readGoAll(root).length > 0; // autopilot, or Shaun's standing go
+    if ((text.slice(-600).match(/^\s*\d+[.)]\s+\S/gm) || []).length >= 2) return 'Do not end with a numbered list of options or things for Shaun to type. Say in one short message what finished and, only if something truly needs him (a password or login, money or a card, a physical step, a real business decision), the one ask, with Do this and Where.';
+    if (keepGoing) { if (!/\bAutopilot paused:/i.test(text)) return 'This task is DONE with a reviewer PASS and you are cleared to continue (autopilot or Shaun\'s approval). Do not end with a question. Take the top item in docs/NEXT.md that needs nothing from Shaun (skip items that need his login, money or a decision, and anything a ruling in docs/RULINGS.md parks), move it into docs/TASK.md as a new task and start it. If nothing on the list can start without him, end with "Autopilot paused:" and one short plain message about the one thing that needs him; no list.'; }
     else {
-      const need = startableItems(root).length; const listed = (text.match(/^\s*\d+[.)]\s+\S/gm) || []).length;
-      if (/\bpick (?:something|anything|one) (?:from|off) (?:the|this) list\b/i.test(text)) return 'Never list an option that says "pick something from the list". List the real items.';
-      if (need === 0 ? !/\bnothing\b/i.test(text) : listed < need) return `Task is DONE and autopilot is off: after "Done." list every item from docs/NEXT.md that can be started now (${need} found), numbered, each with one plain sentence of what it is and what it needs from Shaun (usually nothing). No cap. ${need === 0 ? 'If nothing can start without him, say so and list what needs him.' : `You listed ${listed}.`}`;
-      if (need > 0 && !/\bwhich (?:numbers|ones|items)\b|\bnumbers to run\b/i.test(last)) return 'End by asking which numbers to run.';
+      const need = startableItems(root).length;
+      if (need === 0 && !/\bnothing\b/i.test(text)) return 'Say plainly that nothing is left that can start without Shaun, and name the one thing that needs him, if any. No list.';
+      if (need > 0 && !/\bgo\b/i.test(last)) return 'End with your one recommended next step in plain words and ask Shaun to type go. No numbered list.';
     }
   }
   return null;

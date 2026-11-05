@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PreToolUse: the OTHER doors to a protected asset: shell writes, git commit/push of protected files, connector messages naming protected words, destructive SQL. DENY. Fails open.
 import fs from 'node:fs'; import { execFileSync } from 'node:child_process';
-import { lists } from './protected-list.mjs'; import { isOverridden, allowedDb, allowedWords, allowedMigrations, unlockHint, unlockHintMany } from './override.mjs'; import { deny, globRe, discussionOn, quiet } from './common.mjs';
+import { lists } from './protected-list.mjs'; import { isOverridden, allowedDb, allowedWords, allowedMigrations, unlockHint, unlockHintMany } from './override.mjs'; import { deny, globRe, discussionOn, quiet, cardCovers, cardMentions } from './common.mjs';
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const DESTRUCTIVE = /(?<![A-Za-z_])(delete\s+from|drop\s+(?:table|function|schema|policy|trigger|view|index|column)|truncate|alter\s+(?:table|function|policy|role)|grant|revoke|create\s+or\s+replace\s+function)(?![A-Za-z_])/i;
 const WRITES = [/\bsed\s+(?:\S+\s+)*?(?:-[a-zA-Z]*i\b|--in-place)/, /\bperl\s+-[a-zA-Z]*i/, /\btee\b/, /\bcp\b/, /\bmv\b/, /\brm\b/, /\bpatch\b/, /\bgit\s+(?:checkout|restore|apply|am|rm|mv|reset)\b/, />>?/];
@@ -38,12 +38,12 @@ export function check(input) {
     const cmd = String(ti.command || '');
     const qc = quiet(cmd); const hit = shellNames.find((n) => qc.includes(n) && WRITES.some((w) => w.test(qc)));
     const hitFull = hit ? (P.files.find((f) => f === hit || f.split('/').pop() === hit || (f.includes('*') && f.startsWith(hit))) || hit) : hit;
-    if (hit && !isOverridden(cwd, hitFull) && !isOverridden(cwd, hit)) return deny(`This shell command may change a protected area (PROTECTED.md). Hard stop until Shaun agrees. ${unlockHint(cwd, 'file', hitFull)}`);
+    if (hit && !isOverridden(cwd, hitFull) && !isOverridden(cwd, hit) && !cardCovers(cwd, [hitFull, hit])) return deny(`This shell command may change a protected area (PROTECTED.md). Hard stop until Shaun agrees. ${unlockHint(cwd, 'file', hitFull)}`);
     const okDb = allowedDb(cwd); const okMig = allowedMigrations(cwd); const dbfn = P.db.find((f) => cmd.includes(f) && !okDb.includes(f)); if (dbfn && /migrations\//.test(cmd)) return deny(`This writes a migration touching a protected database function (${dbfn}). ${unlockHint(cwd, 'db', dbfn)}`);
     if (okMig.length && /migrations\//.test(cmd) && P.db.some((f) => cmd.includes(f) && okDb.includes(f)) && !okMig.some((m) => cmd.includes(m) || cmd.includes(m.split('/').pop()))) return deny('This writes a migration touching a protected DB function, but override.txt (allow-migration) names a different migration file.');
     if (/\bgit\b[^|;&]*?\b(commit|push)\b/.test(cmd)) {
       const files = gitFiles(cmd, cwd);
-      const open = [...files].filter((f) => isProt(f) && !isOverridden(cwd, f));
+      const open = [...files].filter((f) => isProt(f) && !isOverridden(cwd, f) && !cardCovers(cwd, [f, ...P.files.filter((g) => f === g || globRe(g).test(f))], ['ACTIVE', 'DONE']));
       const okDb = allowedDb(cwd); const okMig = allowedMigrations(cwd); let usingAllowed = 0;
       for (const f of files) if (/migrations\/.+\.sql$/.test(f)) { try { const b = fs.readFileSync(`${cwd}/${f}`, 'utf8'); const hit = P.db.filter((d) => b.includes(d)); if (hit.some((d) => !okDb.includes(d))) open.push(f); else if (hit.length) { if (okMig.length && !okMig.some((m) => f === m || f.endsWith('/' + m))) open.push(f); else usingAllowed++; } } catch {} }
       if (usingAllowed > 1) return deny(`Only ONE migration may touch the protected database functions allowed in .claude/override.txt (allow-db); this ${/\bpush\b/.test(cmd) ? 'push' : 'commit'} has ${usingAllowed}.`);
@@ -55,10 +55,10 @@ export function check(input) {
   if (/__send_message$/.test(name)) {
     // Every protected word and every protected file name the message mentions must be unlocked (typed unlock or override.txt). All that are still locked are reported together, so Shaun can unlock them in one message.
     const msg = String(ti.message || ti.prompt || ''); const okW = allowedWords(cwd); const mentioned = (x) => new RegExp(`(?<![A-Za-z])${esc(x)}(?![A-Za-z])`, 'i').test(msg); const hits = [];
-    for (const wd of P.words) if (!okW.includes(wd.toLowerCase()) && mentioned(wd)) hits.push({ kind: 'word', value: wd.toLowerCase() });
+    for (const wd of P.words) if (!okW.includes(wd.toLowerCase()) && !cardMentions(cwd, wd) && mentioned(wd)) hits.push({ kind: 'word', value: wd.toLowerCase() });
     for (const n of names) {
       if (!mentioned(n)) continue; const full = plain.find((f) => f === n || f.split('/').pop() === n) || n;
-      if (okW.includes(n.toLowerCase()) || okW.includes(full.toLowerCase()) || isOverridden(cwd, full)) continue;
+      if (okW.includes(n.toLowerCase()) || okW.includes(full.toLowerCase()) || isOverridden(cwd, full) || cardCovers(cwd, [full]) || cardMentions(cwd, full) || cardMentions(cwd, full.split('/').pop())) continue;
       if (!hits.some((h) => h.value === full)) hits.push({ kind: 'file', value: full });
     }
     return hits.length ? deny(`This connector request mentions protected areas (${hits.map((h) => h.value).join(', ')}) (PROTECTED.md). Hard stop until Shaun agrees. ${unlockHintMany(cwd, hits)}`) : null;

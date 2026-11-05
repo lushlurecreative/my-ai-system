@@ -3,15 +3,25 @@
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden, unlockHint } from './override.mjs';
-import { deny, rel, readTask, readToolbox, readApprovals, readGo, consumeGo, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf } from './common.mjs';
+import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf } from './common.mjs';
 const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS)\.md$/, /^docs\/notes\//];
 export function checkEdit(root, filePath) {
+  const ctx = {}; const res = checkEditCore(root, filePath, ctx);
+  if (!res && ctx.viaCard) logProtectedEdit(root, rel(root, filePath));
+  return res;
+}
+function checkEditCore(root, filePath, ctx) {
   const r = rel(root, filePath);
   if (r.startsWith('..')) return deny(`Edits outside the project (${r}) are not allowed.`);
   const am = r.match(/^\.claude\/agents\/([\w-]+)\.md$/); if (am && readApprovals(root).includes('agent:' + am[1].toLowerCase())) return null;
   if (SELF.includes(r) || SELF_DIRS.some((d) => r.startsWith(d))) return isOverridden(root, r) ? null : deny(`${r} belongs to the system itself. You cannot change it and Shaun does not unlock it in chat. The fix belongs in the master system: tell Shaun in plain English the problem, what you recommend, and give him a ready prompt to paste into his master-system chat. No file names or code terms in your message to him.`);
   const P = lists(root);
-  if (P.files.some((f) => r === f || globRe(f).test(r))) return isOverridden(root, r) ? null : deny(`${r} is PROTECTED (PROTECTED.md). Hard stop until Shaun agrees. ${unlockHint(root, 'file', P.files.find((f) => r === f || globRe(f).test(r)) || r)}`);
+  const entries = P.files.filter((f) => r === f || globRe(f).test(r));
+  if (entries.length) {
+    if (isOverridden(root, r)) return null;
+    if (cardCovers(root, [r, ...entries])) ctx.viaCard = true; // the task card is the approval; the normal task checks below still apply
+    else return deny(`${r} is PROTECTED (PROTECTED.md). It is only open to a task whose card lists it explicitly under Allowed paths. ${unlockHint(root, 'file', entries[0])}`);
+  }
   if (/^supabase\/migrations\/.+\.sql$/.test(r) || /migrations\/.+\.sql$/.test(r)) { /* migration content is checked by protected-paths */ }
   if (discussionOn(root) && !(r === 'docs/RULINGS.md' || /^docs\/notes\//.test(r))) return deny(`Discussion mode is on: no files change until Shaun says go (or "task mode"). Give your view in chat. Only docs/RULINGS.md (his decisions) and docs/notes/ can be written now.`);
   if (ALWAYS_OK.some((x) => x.test(r))) return null;
@@ -44,6 +54,7 @@ function checkInstall(root, c) {
 export function gateActivation(root, text) {
   if (!/Status:\s*ACTIVE\b/i.test(String(text || ''))) return null;
   if (readTask(root).status === 'ACTIVE' || system(root).autopilot) return null;
+  if (readGoAll(root).length) return null; // a standing go covers every task in the batch Shaun approved
   if (readGo(root).length) { consumeGo(root); return null; }
   return deny('A task cannot start yet: Shaun has not said go in chat (sharing information, a quote or a pasted reply is not a go). Name the task in one sentence and stop. When he types go, "option 2", "do it" or "start ...", set Status: ACTIVE.');
 }

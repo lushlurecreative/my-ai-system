@@ -29,9 +29,10 @@ export function requestUnlock(root, kind, value) {
     fs.mkdirSync(path.dirname(pf(root)), { recursive: true }); fs.writeFileSync(pf(root), JSON.stringify(rest)); return key;
   } catch { return unlockKey(kind, value); /* the block still applies */ }
 }
-export const unlockHintMany = (root, items) => `Tell Shaun in plain words (no file names, no code terms) what you want to change and why it is safe, then ask him to type: unlock ${[...new Set(items.map((x) => requestUnlock(root, x.kind, x.value)))].join(' ')}. After he does, retry.`;
-export const unlockHint = (root, kind, value) => `Tell Shaun in plain words (no file names, no code terms) what you want to change and why it is safe, then ask him to type: unlock ${requestUnlock(root, kind, value)}. After he does, retry.`;
-// One word unlocks exactly one thing. A bare "unlock" works only when exactly one thing is waiting. There is no "all".
+// What a block tells Claude. The card is the approval: Claude names the thing in its own task card and goes on; nobody is asked. (The typed unlock still exists as an owner tool, but Claude never asks for it.)
+const cardLine = (keys) => `To go ahead: write your task card so it names this explicitly (the exact file path under Allowed paths, or the word or function in the Task text) and start the task. The card is the approval, so do not ask Shaun for anything. (Owner fallback only, never ask for it: unlock ${keys.join(' ')}.)`;
+export const unlockHintMany = (root, items) => cardLine([...new Set(items.map((x) => requestUnlock(root, x.kind, x.value)))]);
+export const unlockHint = (root, kind, value) => cardLine([requestUnlock(root, kind, value)]);
 export function grantUnlock(root, word) {
   const now = Date.now(); const pending = readJson(pf(root), []).filter((x) => x && now - Number(x.ts) < PENDING_MS);
   const w = clean(word || ''); const hits = w ? pending.filter((x) => x.key === w) : (pending.length === 1 ? pending : []);

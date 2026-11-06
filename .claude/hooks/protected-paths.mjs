@@ -39,13 +39,13 @@ export function check(input) {
     const qc = quiet(cmd); const hit = shellNames.find((n) => qc.includes(n) && WRITES.some((w) => w.test(qc)));
     const hitFull = hit ? (P.files.find((f) => f === hit || f.split('/').pop() === hit || (f.includes('*') && f.startsWith(hit))) || hit) : hit;
     if (hit && !isOverridden(cwd, hitFull) && !isOverridden(cwd, hit) && !cardCovers(cwd, [hitFull, hit])) return deny(`This shell command may change a protected area (PROTECTED.md). Hard stop until Shaun agrees. ${unlockHint(cwd, 'file', hitFull)}`);
-    const okDb = allowedDb(cwd); const okMig = allowedMigrations(cwd); const dbfn = P.db.find((f) => cmd.includes(f) && !okDb.includes(f)); if (dbfn && /migrations\//.test(cmd)) return deny(`This writes a migration touching a protected database function (${dbfn}). ${unlockHint(cwd, 'db', dbfn)}`);
+    const okDb = allowedDb(cwd); const okMig = allowedMigrations(cwd); const dbfn = P.db.find((f) => cmd.includes(f) && !okDb.includes(f) && !cardMentions(cwd, f)); if (dbfn && /migrations\//.test(cmd)) return deny(`This writes a migration touching a protected database function (${dbfn}). ${unlockHint(cwd, 'db', dbfn)}`);
     if (okMig.length && /migrations\//.test(cmd) && P.db.some((f) => cmd.includes(f) && okDb.includes(f)) && !okMig.some((m) => cmd.includes(m) || cmd.includes(m.split('/').pop()))) return deny('This writes a migration touching a protected DB function, but override.txt (allow-migration) names a different migration file.');
     if (/\bgit\b[^|;&]*?\b(commit|push)\b/.test(cmd)) {
       const files = gitFiles(cmd, cwd);
       const open = [...files].filter((f) => isProt(f) && !isOverridden(cwd, f) && !cardCovers(cwd, [f, ...P.files.filter((g) => f === g || globRe(g).test(f))], ['ACTIVE', 'DONE']));
       const okDb = allowedDb(cwd); const okMig = allowedMigrations(cwd); let usingAllowed = 0;
-      for (const f of files) if (/migrations\/.+\.sql$/.test(f)) { try { const b = fs.readFileSync(`${cwd}/${f}`, 'utf8'); const hit = P.db.filter((d) => b.includes(d)); if (hit.some((d) => !okDb.includes(d))) open.push(f); else if (hit.length) { if (okMig.length && !okMig.some((m) => f === m || f.endsWith('/' + m))) open.push(f); else usingAllowed++; } } catch {} }
+      for (const f of files) if (/migrations\/.+\.sql$/.test(f)) { try { const b = fs.readFileSync(`${cwd}/${f}`, 'utf8'); const hit = P.db.filter((d) => b.includes(d)); if (hit.some((d) => !okDb.includes(d) && !cardMentions(cwd, d, ['ACTIVE', 'DONE']))) open.push(f); else if (hit.length) { if (okMig.length && !okMig.some((m) => f === m || f.endsWith('/' + m))) open.push(f); else usingAllowed++; } } catch {} }
       if (usingAllowed > 1) return deny(`Only ONE migration may touch the protected database functions allowed in .claude/override.txt (allow-db); this ${/\bpush\b/.test(cmd) ? 'push' : 'commit'} has ${usingAllowed}.`);
       if (open.length) return deny(`This git ${/\bpush\b/.test(cmd) ? 'push' : 'commit'} includes protected file(s): ${open.join(', ')}. ${unlockHintMany(cwd, [...new Set(open.map((f) => P.files.find((g) => f === g || globRe(g).test(f)) || f))].map((g) => ({ kind: 'file', value: g })))}`);
     }
@@ -65,7 +65,7 @@ export function check(input) {
   }
   if (/__(query_database|execute_sql|apply_migration|run_sql)$/.test(name)) {
     const sql = String(ti.sql || ti.query || '');
-    const fn = P.db.find((f) => sql.includes(f)); if (fn && !/^\s*(select|with)\b/i.test(sql)) return deny(`This SQL touches a protected database function (${fn}). ${unlockHint(cwd, 'db', fn)}`);
+    const fn = P.db.find((f) => sql.includes(f) && !cardMentions(cwd, f)); if (fn && !/^\s*(select|with)\b/i.test(sql)) return deny(`This SQL touches a protected database function (${fn}). ${unlockHint(cwd, 'db', fn)}`);
     const d = sql.match(DESTRUCTIVE); if (d) return deny(`Destructive SQL blocked ("${d[1]}"). Ask Shaun.`);
     if (/^\s*update\b/i.test(sql) && !/\bwhere\b/i.test(sql)) return deny('UPDATE without WHERE blocked.');
   }

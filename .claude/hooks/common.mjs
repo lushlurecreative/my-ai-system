@@ -38,9 +38,12 @@ export function cardCovers(root, values, statuses = ['ACTIVE']) { const t = read
 export function taskCardText(root) { let t = ''; try { t = fs.readFileSync(path.join(root, 'docs/TASK.md'), 'utf8'); } catch { return ''; } return t.split(/^Evidence:/m)[0]; }
 export const taskTitle = (root) => { const m = taskCardText(root).match(/^Task:\s*\n\s*-\s*(.+)$/m); return (m ? m[1] : '(untitled)').replace(/[\t\n]/g, ' ').slice(0, 120); };
 // An ACTIVE card that names the word or file counts as the approval for a connector message about it.
-export function cardMentions(root, token) { if (readTask(root).status !== 'ACTIVE') return false; const esc = String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return new RegExp(`(?<![A-Za-z0-9])${esc}(?![A-Za-z0-9])`, 'i').test(taskCardText(root)); }
+export function cardMentions(root, token, statuses = ['ACTIVE']) { if (!statuses.includes(readTask(root).status)) return false; const esc = String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return new RegExp(`(?<![A-Za-z0-9])${esc}(?![A-Za-z0-9])`, 'i').test(taskCardText(root)); }
 // One append-only line per protected-file edit the task card allowed: time, file, task. Only a hook writes it.
 export function logProtectedEdit(root, file) { try { const f = path.join(root, '.claude/protected-edits.log'); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.appendFileSync(f, `${new Date().toISOString()}\t${file}\t${taskTitle(root)}\n`); } catch { /* the edit is still allowed by the card */ } }
+// Shaun does not hand out a go per task any more: tasks start when Claude writes the card. The gate is available again with requireGo:true in system.json. initiative (default on) makes Claude carry on and fix what it finds.
+export const goRequired = (root) => system(root).requireGo === true;
+export const initiativeOn = (root) => system(root).initiative !== false;
 export function consumeGo(root) { const f = path.join(root, '.claude/approvals.json'); try { const a = JSON.parse(fs.readFileSync(f, 'utf8')); const now = Date.now(); const i = (Array.isArray(a) ? a : []).findIndex((x) => x && x.name === '__go__'); if (i < 0) return; a.splice(i, 1); fs.writeFileSync(f, JSON.stringify(a)); } catch { /* nothing to consume */ } }
 // Discussion mode: set only by approve.mjs from Shaun's own chat message; lapses after 24 hours so a forgotten flag cannot switch the stop checks off for long.
 export function discussionOn(root) { try { const d = JSON.parse(fs.readFileSync(path.join(root, '.claude/discussion.json'), 'utf8')); return Date.now() - Number(d.ts) < 24 * 3600 * 1000; } catch { return false; } }

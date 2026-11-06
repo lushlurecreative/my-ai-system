@@ -15,6 +15,8 @@ export function lastUserText(transcriptPath) {
 }
 // A question from Shaun is answered, not turned into new work or a forced list.
 const isQuestion = (u) => !!u && u.length <= 1500 && !/^\s*(?:go|do|just do|start|proceed|option|yes|ok|okay)\b/i.test(u) && (/\?\s*$/.test(u) || /^\s*(?:why|what|how|who|when|where|which|can|could|should|would|is|are|was|were|does|did)\b/i.test(u));
+// Asking Shaun to pick an order, to say where to start, or whether to start. He is the boss; Claude decides and tells him afterwards.
+const PICK = [/\bwhich (?:of (?:these|those|them)|one|ones|items?|numbers?)\b[^.?!\n]{0,60}\b(?:first|next|start|tackle|dig|fix|run|do)\b/i, /\bwhere (?:do you want|should (?:I|we)) (?:me )?(?:to )?(?:start|begin)\b/i, /\bwhat (?:would|do) you (?:like|want) (?:me )?to (?:do|tackle|fix|start|work on)\b/i, /\bwant me to (?:start|begin|fix|tackle|go|save|commit)\b/i, /\bshould I (?:start|begin|go ahead|proceed|fix|tackle|save|commit)\b/i, /\b(?:reply|say|type|tell me) ["'\u201c]?(?:save it|commit it|yes|ok|okay)\b/i, /\bI need your (?:ok|okay|go|approval|permission) to (?:save|commit|fix|start|run|change|build)\b/i];
 const MAX = 2;
 const ANNOUNCE = /(?<!\b(?:whether|if) )\b(?:I'll|I will|I'm going to|I am going to|I'm about to|let me)\s+(?:now\s+|go ahead and\s+)?(?:dig|push|get started|check|verify|run|do|start|begin|fix|deploy|test|look|investigate|update|write|implement|continue)\b|\b(?:continuing|proceeding|moving on)\b[^.?!]{0,60}\b(?:now|next)\b|\bnow (?:I'll|let me|checking|running|verifying)\b/i;
 const HANDOFF = /\?\s*$|\bblocked (?:on|by)\b|\b(?:once|after) you\b|\bwaiting (?:on|for)\b|\byour call\b|\bwhich (?:one|numbers)\b|\bnumbers to run\b|\bAutopilot paused\b|\bstopp(?:ed|ing) (?:as|because) you\b/i;
@@ -43,9 +45,10 @@ const ASKED_ABOUT_CODE = /\b(?:which|what) (?:files?|code|scripts?)\b|\bshow me 
 export function judge(message, root, transcriptPath) {
   const text = String(message || '').replace(/[‘’]/g, "'").trim(); if (!text) return null;
   const jh = jargonHits(text); if (jh.length >= 3 && !(transcriptPath && ASKED_ABOUT_CODE.test(lastUserText(transcriptPath)))) return `Your reply talks in file names and system terms (${jh.slice(0, 4).join(', ')}). Shaun does not read those and does not edit files. Rewrite it in plain English: the problem in one sentence, what you recommend, the exact text to paste and where (inside a code block), and the one thing he must do. No reasons unless he asked. Any pasting goes in a chat box; never ask him to open or edit a file.`;
-  if (discussionOn(root)) return null; // discussion mode: a plain conversational reply is fine; the edit blocks still apply
   const last = text.slice(-700).split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || text.slice(-700);
   const spoken = last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ');
+  if (PICK.some((r) => r.test(last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ')))) return 'Do not ask Shaun to pick an order, to say where to start, or whether you should start. He is the boss and has told you to carry on. Decide the order yourself (most customer-damaging first), do the work, and tell him afterwards what you found and fixed, in plain words. Ask him only for a password or login, money or a card, a physical step, or a real business decision.';
+  if (discussionOn(root)) return null; // discussion mode: a plain conversational reply is fine; the edit blocks still apply
   if (!HANDOFF.test(last) && ANNOUNCE.test(spoken)) return `Your reply ends by announcing work ("${spoken.match(ANNOUNCE)[0]}") instead of doing it. Do it now, or end in a valid stop: done with evidence plus the numbered list (autopilot off) or the next task started (autopilot on), a question only Shaun can answer, or a named blocker.`;
   const t = readTask(root);
   if (t.status === 'ACTIVE' && PERMISSION.test(spoken)) return 'You are mid-task and you are asking permission to continue. That is not a valid stop. Research it, investigate, decide, and do the next step. Valid stops: a decision only Shaun can make (give the options and your recommendation), a named blocker with what you tried, or done with evidence.';
@@ -60,9 +63,9 @@ export function judge(message, root, transcriptPath) {
     if (transcriptPath && !reviewerRan(transcriptPath)) return 'TASK.md says the reviewer passed, but no reviewer agent ran in this session. Run it now and record the real verdict.';
   }
   if (t.status === 'DONE' && t.evidence > 0 && /PASS/i.test(t.verdict) && !(transcriptPath && isQuestion(lastUserText(transcriptPath)))) {
-    const keepGoing = system(root).autopilot || readGoAll(root).length > 0; // autopilot, or Shaun's standing go
+    const keepGoing = system(root).autopilot || system(root).initiative !== false || readGoAll(root).length > 0; // initiative is on unless a project turns it off
     if ((text.slice(-600).match(/^\s*\d+[.)]\s+\S/gm) || []).length >= 2) return 'Do not end with a numbered list of options or things for Shaun to type. Say in one short message what finished and, only if something truly needs him (a password or login, money or a card, a physical step, a real business decision), the one ask, with Do this and Where.';
-    if (keepGoing) { if (!/\bAutopilot paused:/i.test(text)) return 'This task is DONE with a reviewer PASS and you are cleared to continue (autopilot or Shaun\'s approval). Do not end with a question. Take the top item in docs/NEXT.md that needs nothing from Shaun (skip items that need his login, money or a decision, and anything a ruling in docs/RULINGS.md parks), move it into docs/TASK.md as a new task and start it. If nothing on the list can start without him, end with "Autopilot paused:" and one short plain message about the one thing that needs him; no list.'; }
+    if (keepGoing) { if (startableItems(root).length > 0) return 'This task is DONE with a reviewer PASS and items on docs/NEXT.md can start without Shaun. Do not end with a report or a question. Move the top such item into docs/TASK.md as a new task and start it; tell Shaun what you found and fixed afterwards, in plain words. (Skip items that need his login, money or a decision, and anything a ruling in docs/RULINGS.md parks.)'; }
     else {
       const need = startableItems(root).length;
       if (need === 0 && !/\bnothing\b/i.test(text)) return 'Say plainly that nothing is left that can start without Shaun, and name the one thing that needs him, if any. No list.';

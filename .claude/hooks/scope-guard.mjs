@@ -3,8 +3,8 @@
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden, unlockHint } from './override.mjs';
-import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf } from './common.mjs';
-const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS)\.md$/, /^docs\/notes\//];
+import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf } from './common.mjs';
+const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS|FIXED)\.md$/, /^docs\/notes\//];
 export function checkEdit(root, filePath) {
   const ctx = {}; const res = checkEditCore(root, filePath, ctx);
   if (!res && ctx.viaCard) logProtectedEdit(root, rel(root, filePath));
@@ -20,7 +20,7 @@ function checkEditCore(root, filePath, ctx) {
   if (entries.length) {
     if (isOverridden(root, r)) return null;
     if (cardCovers(root, [r, ...entries])) ctx.viaCard = true; // the task card is the approval; the normal task checks below still apply
-    else return deny(`${r} is PROTECTED (PROTECTED.md). It is only open to a task whose card lists it explicitly under Allowed paths. ${unlockHint(root, 'file', entries[0])}`);
+    else return deny(`${r} is PROTECTED (PROTECTED.md). It is open to any task whose card lists it explicitly under Allowed paths. ${unlockHint(root, 'file', entries[0])}`);
   }
   if (/^supabase\/migrations\/.+\.sql$/.test(r) || /migrations\/.+\.sql$/.test(r)) { /* migration content is checked by protected-paths */ }
   if (discussionOn(root) && !(r === 'docs/RULINGS.md' || /^docs\/notes\//.test(r))) return deny(`Discussion mode is on: no files change until Shaun says go (or "task mode"). Give your view in chat. Only docs/RULINGS.md (his decisions) and docs/notes/ can be written now.`);
@@ -52,7 +52,7 @@ function checkInstall(root, c) {
 }
 // A task starts only on Shaun's go. approve.mjs records the go from his own chat message; opening a task (Status: ACTIVE) uses it up. Autopilot skips the gate.
 export function gateActivation(root, text) {
-  if (!/Status:\s*ACTIVE\b/i.test(String(text || ''))) return null;
+  if (!/Status:\s*ACTIVE\b/i.test(String(text || '')) || !goRequired(root)) return null;
   if (readTask(root).status === 'ACTIVE' || system(root).autopilot) return null;
   if (readGoAll(root).length) return null; // a standing go covers every task in the batch Shaun approved
   if (readGo(root).length) { consumeGo(root); return null; }

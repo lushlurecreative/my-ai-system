@@ -17,3 +17,6 @@ Not installed into projects. Read this at the start of every master-chat session
 7. A fix for a project's wrong block is built in the master as a universal fix. Shaun then tells the project's chat to use it. The master chat does not reach into the project.
 8. Before any command, check the folder it runs in. If it is not this repo, stop: either Shaun named that project this turn, or the command does not run.
 9. Shaun's earlier answer "syncing is yours" means: when Shaun asks for a sync, Claude does it, so he never has to type commands. It is not permission to sync unasked.
+
+## When Shaun tells you to do something
+10. A clear instruction from Shaun is the go. Do it. Do not ask him to type go, save it, yes or any other word first, and do not park an instruction as an offer. Discussion mode (only when he asks for it) is the one case where nothing changes until he gives an instruction.

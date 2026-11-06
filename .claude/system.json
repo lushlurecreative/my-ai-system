@@ -1,1 +1,1 @@
-{ "autopilot": false, "maxHelpers": 6, "allowExpensiveHelpers": false, "checkForUpdates": true, "masterPath": "~/my-ai-system", "globalLibrary": "~/Downloads/Global AI Tools" }
+{ "autopilot": false, "initiative": true, "requireGo": false, "maxHelpers": 6, "allowExpensiveHelpers": false, "checkForUpdates": true, "masterPath": "~/my-ai-system", "globalLibrary": "~/Downloads/Global AI Tools" }

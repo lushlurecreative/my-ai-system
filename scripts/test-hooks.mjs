@@ -69,16 +69,16 @@ const r2 = agent({ subagent_type: 'scout' }); t('scout with no model keeps its h
 t('security runs on opus without allowExpensiveHelpers', decision(agent({ subagent_type: 'security' })) === 'allow' && frontModel('security') === 'opus', true); t('security asked for sonnet -> deny', decision(agent({ subagent_type: 'security', model: 'sonnet' })), 'deny'); t('reviewer is opus', frontModel('reviewer'), 'opus');
 const r3 = agent({ subagent_type: 'general-purpose' }); t('unlisted helper with no model -> allowed and set to sonnet', decision(r3) === 'allow' && r3?.hookSpecificOutput?.updatedInput?.model === 'sonnet', true);
 t('unlisted helper on haiku -> allowed', decision(agent({ subagent_type: 'general-purpose', model: 'haiku' })), 'allow'); t('unlisted helper on fable -> deny', decision(agent({ subagent_type: 'general-purpose', model: 'fable' })), 'deny'); t('unlisted helper on opus -> deny', decision(agent({ subagent_type: 'general-purpose', model: 'opus' })), 'deny');
-clearAgentCounts(); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: true })); t('opus allowed for an unlisted helper when Shaun sets allowExpensiveHelpers', decision(agent({ subagent_type: 'general-purpose', model: 'opus' })), 'allow');
-fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false })); clearAgentCounts();
+clearAgentCounts(); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, initiative: false, requireGo: true, maxHelpers: 6, allowExpensiveHelpers: true })); t('opus allowed for an unlisted helper when Shaun sets allowExpensiveHelpers', decision(agent({ subagent_type: 'general-purpose', model: 'opus' })), 'allow');
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, initiative: false, requireGo: true, maxHelpers: 6, allowExpensiveHelpers: false })); clearAgentCounts();
 for (let i = 0; i < 6; i++) agent({}); t('7th helper in one session -> deny (cap 6)', decision(agent({})), 'deny');
-clearAgentCounts(); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 1 })); agent({}); t('cap of 1 honored', decision(agent({})), 'deny');
+clearAgentCounts(); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, initiative: false, requireGo: true, maxHelpers: 1 })); agent({}); t('cap of 1 honored', decision(agent({})), 'deny');
 // the cap is per task, and the reviewer never counts
-fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 1 })); clearAgentCounts(); task('ACTIVE', ['docs/**'], [], '');
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, initiative: false, requireGo: true, maxHelpers: 1 })); clearAgentCounts(); task('ACTIVE', ['docs/**'], [], '');
 t('analyst run 1 of 1 -> allow', decision(agent({})), 'allow'); t('analyst run 2 with cap 1 -> deny', decision(agent({})), 'deny');
 t('reviewer still launches when the cap is spent', decision(agent({ subagent_type: 'reviewer' })), 'allow'); for (let i = 0; i < 9; i++) agent({ subagent_type: 'reviewer' }); t('reviewer launches a tenth time -> allow', decision(agent({ subagent_type: 'reviewer' })), 'allow');
 fs.writeFileSync(path.join(T, 'docs/TASK.md'), fs.readFileSync(path.join(T, 'docs/TASK.md'), 'utf8').replace('- x', '- a different task')); t('a new task restarts the helper count', decision(agent({})), 'allow');
-fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false })); clearAgentCounts();
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, initiative: false, requireGo: true, maxHelpers: 6, allowExpensiveHelpers: false })); clearAgentCounts();
 fs.rmSync(path.join(T, '.claude/approvals.json'), { force: true });
 const ag = (n) => run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: path.join(T, `.claude/agents/${n}.md`) } });
 t('write a new agent file with no approval -> deny', decision(ag('marketing')), 'deny');
@@ -117,7 +117,7 @@ task('NONE', [], [], ''); t('Write of a whole TASK.md with Status: ACTIVE and no
 t('shell edit of TASK.md to ACTIVE with no go -> deny', decision(bash("sed -i 's/Status: NONE/Status: ACTIVE/' docs/TASK.md")), 'deny');
 prompt('go'); t('shell edit of TASK.md to ACTIVE after go -> allow', decision(bash("sed -i 's/Status: NONE/Status: ACTIVE/' docs/TASK.md")), 'allow');
 fs.rmSync(goFile, { force: true }); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: true, maxHelpers: 6 })); t('autopilot ON skips the go gate', decision(activate()), 'allow');
-fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false }));
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, initiative: false, requireGo: true, maxHelpers: 6, allowExpensiveHelpers: false }));
 prompt('go'); t('a recorded go does not approve installs that contain "go"', decision(bash('npm install google-fonts')), 'deny'); fs.rmSync(goFile, { force: true });
 // shell writes follow the same rules as edits
 task('ACTIVE', ['src/pages/**'], [], '');
@@ -136,7 +136,7 @@ t('no task: record a ruling with the edit tool -> allow', decision(edit('docs/RU
 fs.writeFileSync(path.join(T, 'docs/RULINGS.md'), '# Rulings\n\n<!-- Format -->\n- 2026-10-09: the Alpha thing is parked on purpose.\n');
 const startup = (dir, input = {}) => execSync(`node "${dir}/.claude/hooks/session-start.mjs"`, { input: JSON.stringify({ source: 'startup', ...input }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, AIS_NO_AUTOUPDATE: '1' } });
 const ctx = (o) => JSON.parse(o).hookSpecificOutput.additionalContext; const s1 = ctx(startup(T));
-t('startup shows the rulings', /Alpha thing is parked/.test(s1), true); t('startup says no task starts until go', /no task starts until Shaun says go/.test(s1), true); t('startup says archive is history', /docs\/archive\/.*history/.test(s1), true);
+t('startup shows the rulings', /Alpha thing is parked/.test(s1), true); t('startup says there is no go to wait for', /there is no go to wait for/.test(s1), true); t('startup says archive is history', /docs\/archive\/.*history/.test(s1), true);
 t('startup shows the chat model when reported', /Chat model: claude-opus-5-5/.test(ctx(startup(T, { model: 'claude-opus-5-5' }))), true);
 const Bare = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-bare-')); execSync('git init -q --bare -b main', { cwd: Bare });
 const A = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-a-')); execSync(`bash "${SRC}/install.sh" "${A}"`, { stdio: 'ignore' }); const g = (cwd, c) => execSync(c, { cwd, stdio: 'ignore' });
@@ -262,14 +262,14 @@ fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Rotate the l
 fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Fix the mobile header. | sub-goal: 2\n2. Re-check the pricing page. | sub-goal: 5\n3. Rotate the leaked token (Shaun's login only). | sub-goal: none\n\nParked ideas (not ranked):\n- x\n");
 fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: true, maxHelpers: 6 }));
 t('autopilot on: DONE + PASS and ends with a question -> block', decision(stopS('Done. Want me to continue with item 1?', 'au1')), 'block'); t('autopilot on: DONE + PASS and just stops -> block', decision(stopS('Done.', 'au2')), 'block');
-t('autopilot on: nothing startable, says "Autopilot paused:" -> allow', decision(stopS('Autopilot paused: only items that need you are left.\n1. Rotate the leaked token. Needs your login.', 'au3')), 'allow');
+fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Rotate the leaked token (Shaun's login only). | sub-goal: none\n\nParked ideas (not ranked):\n- x\n"); t('autopilot on: nothing startable, a plain reply with no marker -> allow', decision(stopS('Only the token rotation is left, and it needs your login. Please sign in on the admin page.', 'au3')), 'allow'); fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Fix the mobile header. | sub-goal: 2\n2. Re-check the pricing page. | sub-goal: 5\n3. Rotate the leaked token (Shaun's login only). | sub-goal: none\n\nParked ideas (not ranked):\n- x\n");
 task('ACTIVE', ['src/pages/**'], [], ''); t('autopilot on: the next task already started (ACTIVE) is not forced again', decision(stopS('Started the next item: fixing the mobile header; the header file is open.', 'au4')), 'allow');
 // a question from Shaun is answered, not turned into new work or a forced list
 const tr = path.join(os.tmpdir(), 'ais-transcript-q.jsonl'); const asUser = (txt) => fs.writeFileSync(tr, JSON.stringify({ type: 'user', message: { role: 'user', content: txt } }) + '\n');
 task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
 asUser('What do you think about the pricing page?'); t('autopilot on: Shaun asked a question -> a plain answer is allowed', decision(run('done-check.mjs', { session_id: 'q1', last_assistant_message: 'My view: the card wording is clear.', transcript_path: tr })), 'allow');
 asUser('Do option 1 and keep going'); t('autopilot on: Shaun gave a command -> still must start the next task', decision(run('done-check.mjs', { session_id: 'q2', last_assistant_message: 'Done.', transcript_path: tr })), 'block');
-fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6, allowExpensiveHelpers: false }));
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, initiative: false, requireGo: true, maxHelpers: 6, allowExpensiveHelpers: false }));
 asUser('Why is the header misaligned?'); t('autopilot off: Shaun asked a question -> a plain answer is allowed, no forced list', decision(run('done-check.mjs', { session_id: 'q3', last_assistant_message: 'Because the flex container has no gap.', transcript_path: tr })), 'allow');
 asUser('Go with the header fix'); t('autopilot off: Shaun gave a command -> list is still required', decision(run('done-check.mjs', { session_id: 'q4', last_assistant_message: 'Done.', transcript_path: tr })), 'block'); fs.rmSync(tr, { force: true });
 // ---- additions: do it yourself (no handing Shaun work Claude can do) ----
@@ -321,7 +321,7 @@ for (const d of [G, gBare]) fs.rmSync(d, { recursive: true, force: true });
 const readGoCount = () => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/approvals.json'), 'utf8')).filter((x) => x.name === '__go__' || x.name === '__goall__').length; } catch { return 0; } };
 // ---- additions: discussion mode (a real conversation; every edit block stays) ----
 const dflag = path.join(T, '.claude/discussion.json'); fs.rmSync(dflag, { force: true });
-fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6 }));
+fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, initiative: false, requireGo: true, maxHelpers: 6 }));
 fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Fix the mobile header. | sub-goal: 2\n2. Re-check the pricing page. | sub-goal: 5\n\nParked ideas (not ranked):\n- x\n");
 task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
 const chat = 'My view: the pricing page leads with features, not the result a buyer wants. I would lead with the outcome. Does that match what customers ask you?';
@@ -511,14 +511,14 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   for (const w of ['stop the header from flickering', 'do not stop until it works', 'wait for the deploy then check the page']) { fs.writeFileSync(goFile, JSON.stringify([{ name: '__goall__', ts: Date.now() }])); prompt(w); t(`"${w}" is not a stop`, decision(activate()), 'allow'); }
   fs.rmSync(goFile, { force: true });
   fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Fix the mobile header. | sub-goal: 2\n2. Re-check the pricing page. | sub-goal: 5\n\nParked ideas (not ranked):\n- x\n");
-  fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6 })); task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
+  fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, initiative: false, requireGo: true, maxHelpers: 6 })); task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
   fs.writeFileSync(goFile, JSON.stringify([{ name: '__goall__', ts: Date.now() }]));
   t('standing go in force: DONE reply that stops with a recommendation and asks for go -> block', decision(stopS(NEXT_PLAIN, 'sg1')), 'block');
   task('ACTIVE', ['src/pages/**'], [], ''); t('standing go in force: the next task already opened (ACTIVE) -> allow', decision(stopS('Started the next item: the mobile header; the card is open.', 'sg2')), 'allow'); task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
-  t('standing go in force: "Autopilot paused:" with one plain ask -> allow', decision(stopS('Autopilot paused: only your admin sign-in is left. Please sign in on the admin page.', 'sg3')), 'allow');
+  fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Rotate the leaked token (Shaun's login only). | sub-goal: none\n\nParked ideas (not ranked):\n- x\n"); t('standing go in force: nothing startable, a plain ask for the one thing -> allow', decision(stopS('Only your admin sign-in is left. Please sign in on the admin page.', 'sg3')), 'allow');
   fs.rmSync(goFile, { force: true }); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: true, maxHelpers: 6 }));
   t('autopilot on: "Autopilot paused:" followed by a numbered list -> block', decision(stopS('Autopilot paused:\n1. Rotate the token.\n2. Sign in to admin.', 'sg4')), 'block');
-  fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6 }));
+  fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, initiative: false, requireGo: true, maxHelpers: 6 }));
 }
 {
   // the task card is the approval for protected files
@@ -549,6 +549,50 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   card('ACTIVE', ['supabase/functions/analyze-deal/index.ts'], { title: 'Fix analyze-deal rounding' }); t('connector: a card naming the file lets a message about it pass', decision(cMsg('In analyze-deal fix the rounding')), 'allow'); t('connector: but another protected word still blocks', decision(cMsg('In analyze-deal fix the rounding and checkout')), 'deny');
   card('DONE', ['src/pages/**'], { title: 'Change the checkout button colour' }); t('connector: a DONE card is not an approval', decision(cMsg('Change the checkout button colour')), 'deny');
   fs.rmSync(CD, { recursive: true, force: true });
+}
+// ---- additions: initiative (default mode): no go, no unlock asks, no pick questions, no pause marker, permission heard anywhere ----
+{
+  const { permissionAnywhere } = await import(`${SRC}/.claude/hooks/approve.mjs`);
+  fs.rmSync(goFile, { force: true }); fs.rmSync(dflag, { force: true });
+  fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6 })); // defaults: initiative on, no go gate
+  task('NONE', [], [], ''); t('default mode: opening a task needs no go', decision(activate()), 'allow');
+  t('default mode: Write of a whole TASK.md with Status: ACTIVE and no go -> allow', decision(run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: path.join(T, 'docs/TASK.md'), content: '# Current task\n\nStatus: ACTIVE\n' } })), 'allow');
+  t('default mode: docs/FIXED.md can be written with no task open', (task('NONE', [], [], ''), decision(edit('docs/FIXED.md'))), 'allow');
+  fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Fix the mobile header. | sub-goal: 2\n2. Re-check the pricing page. | sub-goal: 5\n\nParked ideas (not ranked):\n- x\n");
+  task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
+  t('default mode: DONE with startable items and a "type go" ending -> block', decision(stopS(NEXT_PLAIN, 'in1')), 'block');
+  t('default mode: DONE with startable items and a plain report -> block (start the next item)', decision(stopS('Done. The page loads and the mobile view was checked.', 'in2')), 'block');
+  task('ACTIVE', ['src/pages/**'], [], ''); t('default mode: the next task already opened -> allow', decision(stopS('Started the next item: the mobile header.', 'in3')), 'allow');
+  fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Rotate the leaked token (Shaun's login only). | sub-goal: none\n\nParked ideas (not ranked):\n- x\n"); task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
+  t('default mode: nothing startable, a plain closing sentence with no marker -> allow', decision(stopS('Done. I walked the site as a customer and found nothing else broken.', 'in4')), 'allow');
+  for (const [label, msgText] of [['"which do you want first"', 'Here is everything I found.\nWhich of these do you want to dig into first?'], ['"should I start"', 'The list is above. Should I start with the header fix?'], ['"where do you want me to start"', 'Where do you want me to start?'], ['"reply save it" with curly quotes', 'The reviewer needs the change saved. Reply “save it” in this chat.'], ['"I need your OK to save"', 'I need your OK to save that change as a commit.'], ['"want me to fix"', 'I can see the cause. Want me to fix it?']]) t(`default mode: ${label} -> block`, decision(stopS(msgText, 'pk' + label.length)), 'block');
+  t('default mode: a real clarifying question about a fact is still fine', decision(stopS('Which listing do you mean, the Dallas one or the Austin one?', 'in5')), 'allow');
+  fs.writeFileSync(dflag, JSON.stringify({ ts: Date.now() })); t('discussion mode: still may not end by asking Shaun to pick -> block', decision(stopS('Here is everything I found.\nWhich of these do you want to dig into first?', 'in6')), 'block'); fs.rmSync(dflag, { force: true });
+  // permission heard anywhere in a message
+  for (const yes of ["I'm so tired of this. Fix all the fucking problems above, I'm giving you permission.", 'The list looks right to me, so do it.', 'You have my permission, go ahead and handle it.', 'Fix them.']) t(`permission anywhere: "${yes.slice(0, 40)}"`, permissionAnywhere(yes), true);
+  for (const no of ['Please do not fix it yet, I want to think.', "Don't do it until I say so.", 'What do you think about the pricing page?', 'It was fixed last week.']) t(`not permission: "${no.slice(0, 40)}"`, permissionAnywhere(no), false);
+  fs.writeFileSync(dflag, JSON.stringify({ ts: Date.now() })); prompt("I'm tired of telling you. Fix all the problems above, you have permission."); t('discussion mode ends when permission is given in plain words anywhere in the message', fs.existsSync(dflag), false);
+  fs.writeFileSync(dflag, JSON.stringify({ ts: Date.now() })); prompt('Do not fix anything yet, I only want to talk.'); t('discussion mode stays on when the message says not to fix', fs.existsSync(dflag), true); fs.rmSync(dflag, { force: true });
+}
+{
+  // protected database functions are open to a task whose card names them; blocks tell Claude to use the card, not to ask
+  const CD2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-card2-')); execSync(`bash "${SRC}/install.sh" "${CD2}"`, { stdio: 'ignore' });
+  fs.writeFileSync(path.join(CD2, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/lib/pricing.ts`\n\n## Protected database functions\n- `is_admin`\n');
+  const card2 = (status, task, allowed = ['src/pages/**']) => fs.writeFileSync(path.join(CD2, 'docs/TASK.md'), `# Current task\n\nStatus: ${status}\nType: BUILD\n\nTask:\n- ${task}\n\nAllowed paths:\n${allowed.map((a) => `- ${a}`).join('\n')}\n\nTools needed:\n- none\n\nDone means:\n- [ ] works\n\nEvidence:\n\nReviewer verdict:\n- \n`);
+  const h2 = (hook, ti, name) => { const o = execSync(`node "${CD2}/.claude/hooks/${hook}"`, { input: JSON.stringify({ cwd: CD2, tool_name: name, tool_input: ti }), encoding: 'utf8' }); return o ? JSON.parse(o) : null; };
+  const sql = (q) => h2('protected-paths.mjs', { sql: q }, 'mcp__Supabase__execute_sql'); const edit2 = (p) => h2('scope-guard.mjs', { file_path: path.join(CD2, p) }, 'Edit');
+  card2('ACTIVE', 'Fix the header'); const dn = sql('update public.is_admin set x = 1 where y = 2'); t('db function: a card that does not name it -> blocked', decision(dn), 'deny');
+  t('db function: the block tells Claude to name it in the card and not to ask Shaun', /card/.test(dn.hookSpecificOutput.permissionDecisionReason) && /do not ask Shaun/.test(dn.hookSpecificOutput.permissionDecisionReason), true);
+  card2('ACTIVE', 'Fix the is_admin check for guests'); t('db function: an ACTIVE card that names it lets the statement through', decision(sql('update public.is_admin set x = 1 where y = 2')), 'allow');
+  t('db function: destructive SQL stays blocked even then', decision(sql('drop function public.is_admin')), 'deny');
+  card2('ACTIVE', 'Fix the header'); const pe = edit2('src/lib/pricing.ts'); t('protected file: the block tells Claude to use the card and not to ask Shaun', decision(pe) === 'deny' && /explicitly/.test(pe.hookSpecificOutput.permissionDecisionReason) && /do not ask Shaun/.test(pe.hookSpecificOutput.permissionDecisionReason), true);
+  fs.rmSync(CD2, { recursive: true, force: true });
+  // install: new keys arrive, existing choices stay
+  const IN = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-keys-')); execSync(`bash "${SRC}/install.sh" "${IN}"`, { stdio: 'ignore' });
+  const sjn = JSON.parse(fs.readFileSync(path.join(IN, '.claude/system.json'), 'utf8')); t('install: a new project starts with initiative on and no go gate', sjn.initiative === true && sjn.requireGo === false, true); t('install: docs/FIXED.md is created', fs.existsSync(path.join(IN, 'docs/FIXED.md')), true);
+  fs.writeFileSync(path.join(IN, '.claude/system.json'), JSON.stringify({ autopilot: true, maxHelpers: 6 })); fs.writeFileSync(path.join(IN, 'docs/FIXED.md'), '# Fixed\n- kept line\n'); execSync(`bash "${SRC}/install.sh" "${IN}"`, { stdio: 'ignore' });
+  const sjo = JSON.parse(fs.readFileSync(path.join(IN, '.claude/system.json'), 'utf8')); t('install: an older settings file gains the new keys and keeps its own values', sjo.autopilot === true && sjo.initiative === true && sjo.requireGo === false, true); t('install: the project\'s own FIXED.md is kept', fs.readFileSync(path.join(IN, 'docs/FIXED.md'), 'utf8').includes('kept line'), true);
+  fs.rmSync(IN, { recursive: true, force: true });
 }
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

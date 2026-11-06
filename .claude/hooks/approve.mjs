@@ -77,7 +77,14 @@ export function clearGo(root) { const f = path.join(root, '.claude/approvals.jso
 const PERM = /\b(?:go ahead|go for it|do it|do them|do all(?: of (?:it|them))?|do everything|fix (?:it|them|all|everything|these|this|that|the problems?|all of (?:it|them))|just fix|you (?:have|got|can|may) (?:my )?(?:permission|approval|the go)|(?:i'?m|i am) giving you permission|execute all|handle (?:it|them|this|all|everything)|take care of (?:it|them|this|all|everything)|all of them|make it happen|build it|implement it)\b/gi;
 export function permissionAnywhere(prompt) {
   const p = String(prompt || ''); if (!p.trim() || p.length > 6000) return false;
-  for (const m of p.matchAll(PERM)) { const before = p.slice(Math.max(0, m.index - 18), m.index).toLowerCase(); if (!/(?:don'?t|do not|never|not|without|stop|no need to|shouldn'?t)\s*(?:\w+\s+)?$/.test(before)) return true; }
+  for (const m of p.matchAll(PERM)) {
+    const before = p.slice(Math.max(0, m.index - 18), m.index).toLowerCase(); if (/(?:don'?t|do not|never|not|without|stop|no need to|shouldn'?t)\s*(?:\w+\s+)?$/.test(before)) continue;
+    // a question is a question, not permission: skip a match inside a sentence that ends in "?" or opens with a question word or modal
+    const from = Math.max(p.lastIndexOf('.', m.index), p.lastIndexOf('!', m.index), p.lastIndexOf('?', m.index), p.lastIndexOf('\n', m.index)) + 1;
+    const tail = p.slice(m.index).search(/[.!?\n]/); const endAt = tail < 0 ? p.length : m.index + tail; const sentence = p.slice(from, endAt + 1).trim();
+    if (/\?$/.test(sentence) || /^(?:and |but |so |ok(?:ay)? |well )?(?:how|what|why|when|where|which|who|should|would|could|can|do you|did you|does|is|are|will|shall|might)\b/i.test(sentence)) continue;
+    return true;
+  }
   return false;
 }
 export function record(root, names) {

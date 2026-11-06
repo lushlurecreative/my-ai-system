@@ -575,9 +575,10 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('default mode: a real clarifying question about a fact is still fine', decision(stopS('Which listing do you mean, the Dallas one or the Austin one?', 'in5')), 'allow');
   fs.writeFileSync(dflag, JSON.stringify({ ts: Date.now() })); t('discussion mode: still may not end by asking Shaun to pick -> block', decision(stopS('Here is everything I found.\nWhich of these do you want to dig into first?', 'in6')), 'block'); fs.rmSync(dflag, { force: true });
   // permission heard anywhere in a message
-  for (const yes of ["I'm so tired of this. Fix all the fucking problems above, I'm giving you permission.", 'The list looks right to me, so do it.', 'You have my permission, go ahead and handle it.', 'Fix them.']) t(`permission anywhere: "${yes.slice(0, 40)}"`, permissionAnywhere(yes), true);
-  for (const no of ['Please do not fix it yet, I want to think.', "Don't do it until I say so.", 'What do you think about the pricing page?', 'It was fixed last week.']) t(`not permission: "${no.slice(0, 40)}"`, permissionAnywhere(no), false);
+  for (const yes of ['ok so fix them all', "I'm so tired of this. Fix all the fucking problems above, I'm giving you permission.", 'The list looks right to me, so do it.', 'You have my permission, go ahead and handle it.', 'Fix them.']) t(`permission anywhere: "${yes.slice(0, 40)}"`, permissionAnywhere(yes), true);
+  for (const no of ['how would you do it?', 'should we build it or wait?', 'What do you think about fixing it?', 'Can you handle it?', 'Please do not fix it yet, I want to think.', "Don't do it until I say so.", 'What do you think about the pricing page?', 'It was fixed last week.']) t(`not permission: "${no.slice(0, 40)}"`, permissionAnywhere(no), false);
   fs.writeFileSync(dflag, JSON.stringify({ ts: Date.now() })); prompt("I'm tired of telling you. Fix all the problems above, you have permission."); t('discussion mode ends when permission is given in plain words anywhere in the message', fs.existsSync(dflag), false);
+  for (const q of ['how would you do it?', 'should we build it or wait?']) { fs.writeFileSync(dflag, JSON.stringify({ ts: Date.now() })); prompt(q); t(`discussion mode stays on for the question "${q}"`, fs.existsSync(dflag), true); }
   fs.writeFileSync(dflag, JSON.stringify({ ts: Date.now() })); prompt('Do not fix anything yet, I only want to talk.'); t('discussion mode stays on when the message says not to fix', fs.existsSync(dflag), true); fs.rmSync(dflag, { force: true });
 }
 {

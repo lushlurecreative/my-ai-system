@@ -31,6 +31,8 @@ export function requestUnlock(root, kind, value) {
 }
 // What a block tells Claude. The card is the approval: Claude names the thing in its own task card and goes on; nobody is asked. (The typed unlock still exists as an owner tool, but Claude never asks for it.)
 const cardLine = (keys) => `To go ahead: write your task card so it names this explicitly (the exact file path under Allowed paths, or the word or function in the Task text) and start the task. The card is the approval, so do not ask Shaun for anything. (Owner fallback only, never ask for it: unlock ${keys.join(' ')}.)`;
+// A protected database function is a change to the live database's own rules (who is admin, who has paid). It stays an owner decision: Shaun types the word, or override.txt allows it. The task card does not cover it.
+export const unlockHintOwner = (root, kind, value) => `This is a change to the live database's own rules, so it is the one thing a task card does not approve. Tell Shaun in plain words (no file names, no code terms) what you want to change and why it is safe, then ask him to type: unlock ${requestUnlock(root, kind, value)}. After he does, retry.`;
 export const unlockHintMany = (root, items) => cardLine([...new Set(items.map((x) => requestUnlock(root, x.kind, x.value)))]);
 export const unlockHint = (root, kind, value) => cardLine([requestUnlock(root, kind, value)]);
 export function grantUnlock(root, word) {

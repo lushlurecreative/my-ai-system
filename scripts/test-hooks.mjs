@@ -316,6 +316,12 @@ t('glob project bypass: bash -m with a hidden write to a protected file -> deny'
   gcard('ACTIVE', ['src/lib/pricing.ts']); t('card: committing a protected file the ACTIVE card names -> allow', gRun('git commit -m "price"'), 'allow');
   gcard('DONE', ['src/lib/pricing.ts']); t('card: committing it when the card is DONE (the normal end of a task) -> allow', gRun('git commit -m "price"'), 'allow');
   gg('git reset -q src/lib/pricing.ts'); fs.rmSync(path.join(G, 'src/lib/pricing.ts'), { force: true });
+  // a migration that touches a protected database function is not covered by a card
+  fs.writeFileSync(path.join(G, 'supabase/migrations/009_admin.sql'), 'create or replace function public.is_admin() returns boolean as $$ select true $$ language sql;\n'); gg('git add supabase/migrations/009_admin.sql');
+  fs.writeFileSync(path.join(G, 'docs/TASK.md'), '# Current task\n\nStatus: ACTIVE\nType: BUILD\n\nTask:\n- Fix the is_admin function\n\nAllowed paths:\n- supabase/migrations/**\n\nTools needed:\n- none\n\nDone means:\n- [ ] works\n\nEvidence:\n\nReviewer verdict:\n- \n');
+  t('card: committing a migration that touches a protected database function -> deny even when the card names it', gRun('git commit -m "admin"'), 'deny');
+  fs.writeFileSync(path.join(G, '.claude/override.txt'), 'allow-db: is_admin\n'); t('card: ...and allow-db in override.txt lets that one migration through', gRun('git commit -m "admin"'), 'allow'); fs.rmSync(path.join(G, '.claude/override.txt'));
+  gg('git reset -q supabase/migrations/009_admin.sql'); fs.rmSync(path.join(G, 'supabase/migrations/009_admin.sql'), { force: true });
 }
 for (const d of [G, gBare]) fs.rmSync(d, { recursive: true, force: true });
 const readGoCount = () => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/approvals.json'), 'utf8')).filter((x) => x.name === '__go__' || x.name === '__goall__').length; } catch { return 0; } };
@@ -582,8 +588,10 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   const h2 = (hook, ti, name) => { const o = execSync(`node "${CD2}/.claude/hooks/${hook}"`, { input: JSON.stringify({ cwd: CD2, tool_name: name, tool_input: ti }), encoding: 'utf8' }); return o ? JSON.parse(o) : null; };
   const sql = (q) => h2('protected-paths.mjs', { sql: q }, 'mcp__Supabase__execute_sql'); const edit2 = (p) => h2('scope-guard.mjs', { file_path: path.join(CD2, p) }, 'Edit');
   card2('ACTIVE', 'Fix the header'); const dn = sql('update public.is_admin set x = 1 where y = 2'); t('db function: a card that does not name it -> blocked', decision(dn), 'deny');
-  t('db function: the block tells Claude to name it in the card and not to ask Shaun', /card/.test(dn.hookSpecificOutput.permissionDecisionReason) && /do not ask Shaun/.test(dn.hookSpecificOutput.permissionDecisionReason), true);
-  card2('ACTIVE', 'Fix the is_admin check for guests'); t('db function: an ACTIVE card that names it lets the statement through', decision(sql('update public.is_admin set x = 1 where y = 2')), 'allow');
+  t('db function: with no card naming it, still blocked and owner-level', /unlock is_admin/.test(dn.hookSpecificOutput.permissionDecisionReason), true);
+  card2('ACTIVE', 'Fix the is_admin check for guests'); const dn2 = sql('update public.is_admin set x = 1 where y = 2'); t('db function: a card that names it does NOT lift the block (owner decision)', decision(dn2), 'deny');
+  t('db function: the block asks Claude to put it to Shaun in plain words with one unlock word', /type: unlock is_admin/.test(dn2.hookSpecificOutput.permissionDecisionReason) && /plain words/.test(dn2.hookSpecificOutput.permissionDecisionReason), true);
+  fs.writeFileSync(path.join(CD2, '.claude/override.txt'), 'allow-db: is_admin\n'); t('db function: override.txt allow-db lets it through', decision(sql('update public.is_admin set x = 1 where y = 2')), 'allow'); fs.rmSync(path.join(CD2, '.claude/override.txt'));
   t('db function: destructive SQL stays blocked even then', decision(sql('drop function public.is_admin')), 'deny');
   card2('ACTIVE', 'Fix the header'); const pe = edit2('src/lib/pricing.ts'); t('protected file: the block tells Claude to use the card and not to ask Shaun', decision(pe) === 'deny' && /explicitly/.test(pe.hookSpecificOutput.permissionDecisionReason) && /do not ask Shaun/.test(pe.hookSpecificOutput.permissionDecisionReason), true);
   fs.rmSync(CD2, { recursive: true, force: true });

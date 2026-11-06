@@ -603,5 +603,14 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   const sjo = JSON.parse(fs.readFileSync(path.join(IN, '.claude/system.json'), 'utf8')); t('install: an older settings file gains the new keys and keeps its own values', sjo.autopilot === true && sjo.initiative === true && sjo.requireGo === false, true); t('install: the project\'s own FIXED.md is kept', fs.readFileSync(path.join(IN, 'docs/FIXED.md'), 'utf8').includes('kept line'), true);
   fs.rmSync(IN, { recursive: true, force: true });
 }
+// settings template: normal git add / commit / push are allowed, every deny rule stays, and the hooks still stop a force push
+{
+  const st = JSON.parse(fs.readFileSync(path.join(SRC, '.claude/settings.json'), 'utf8')); const inst = JSON.parse(fs.readFileSync(path.join(T, '.claude/settings.json'), 'utf8'));
+  t('settings: git add, commit and push are allowed', ['Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git push:*)'].every((r) => st.permissions.allow.includes(r)), true);
+  t('settings: the force push, rm -rf and reset --hard deny rules are still there', ['Bash(git push --force*)', 'Bash(git push -f*)', 'Bash(rm -rf*)', 'Bash(git reset --hard*)'].every((r) => st.permissions.deny.includes(r)), true);
+  t('settings: the protected-file and system-file deny rules are still there', ['Edit(CLAUDE.md)', 'Write(PROTECTED.md)', 'Edit(.claude/hooks/**)', 'Edit(.claude/settings.json)'].every((r) => st.permissions.deny.includes(r)), true);
+  t('settings: an installed project gets the same allow list', JSON.stringify(inst.permissions.allow) === JSON.stringify(st.permissions.allow), true);
+  t('settings: a force push is still stopped by the hook', decision(bash('git push --force origin main')), 'deny'); t('settings: a plus-refspec force push is still stopped by the hook', decision(bash('git push origin +main')), 'deny');
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

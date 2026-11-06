@@ -111,7 +111,7 @@ t('setting Status: NONE needs no go', decision(run('scope-guard.mjs', { tool_nam
 prompt('go'); t('after Shaun says go, opening a task -> allow', decision(activate()), 'allow'); t('a plain go is a standing approval: a second task opens too', decision(activate()), 'allow');
 fs.rmSync(goFile, { force: true }); prompt('option 1'); t('a specific pick opens one task -> allow', decision(activate()), 'allow'); t('a specific pick is used up: a second task -> deny', decision(activate()), 'deny');
 prompt('option 2'); t('"option 2" is a go', decision(activate()), 'allow');
-fs.writeFileSync(goFile, JSON.stringify([{ name: '__go__', ts: Date.now() - 7 * 3600 * 1000 }])); t('a go older than 6 hours -> deny', decision(activate()), 'deny');
+fs.writeFileSync(goFile, JSON.stringify([{ name: '__go__', ts: Date.now() - 7 * 24 * 3600 * 1000 }])); t('a one-task go never expires by time (7 days old) -> allow', decision(activate()), 'allow');
 task('ACTIVE', ['src/pages/**'], [], ''); fs.rmSync(goFile, { force: true }); t('editing TASK.md while already ACTIVE needs no go', decision(activate()), 'allow');
 task('NONE', [], [], ''); t('Write of a whole TASK.md with Status: ACTIVE and no go -> deny', decision(run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: path.join(T, 'docs/TASK.md'), content: '# Current task\n\nStatus: ACTIVE\n' } })), 'deny');
 t('shell edit of TASK.md to ACTIVE with no go -> deny', decision(bash("sed -i 's/Status: NONE/Status: ACTIVE/' docs/TASK.md")), 'deny');
@@ -504,7 +504,12 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   for (const y of ['option 1', '3', 'B', 'start the header fix', "let's fix it", 'go draft the sub-goals file', 'Do option 1']) t(`one-task go: "${y}"`, goKind(y), 'one');
   for (const n of ['What do you think?', 'go back and check the folder', 'Do not talk to me like that']) t(`not a go: "${n}"`, goKind(n), null);
   fs.rmSync(goFile, { force: true }); task('NONE', [], [], ''); prompt('execute all'); t('standing go: the first task opens', decision(activate()), 'allow'); t('standing go: the second task opens without a new go', decision(activate()), 'allow'); t('standing go: a third too', decision(activate()), 'allow');
-  fs.writeFileSync(goFile, JSON.stringify([{ name: '__goall__', ts: Date.now() - 7 * 3600 * 1000 }])); t('standing go lapses after 6 hours', decision(activate()), 'deny'); fs.rmSync(goFile, { force: true });
+  fs.writeFileSync(goFile, JSON.stringify([{ name: '__goall__', ts: Date.now() - 30 * 24 * 3600 * 1000 }])); t('standing go does not lapse by time (30 days old) -> allow', decision(activate()), 'allow');
+  prompt('hello there'); t('an unrelated message does not erase an old standing go', decision(activate()), 'allow');
+  prompt('yes, install left-pad'); t('recording another approval does not prune an old standing go', decision(activate()), 'allow');
+  for (const w of ['stop', 'Stop.', 'pause', 'cancel everything', 'ok stop it', 'hold on']) { fs.writeFileSync(goFile, JSON.stringify([{ name: '__goall__', ts: Date.now() }, { name: '__go__', ts: Date.now() }])); prompt(w); t(`"${w}" ends the standing go`, decision(activate()), 'deny'); }
+  for (const w of ['stop the header from flickering', 'do not stop until it works', 'wait for the deploy then check the page']) { fs.writeFileSync(goFile, JSON.stringify([{ name: '__goall__', ts: Date.now() }])); prompt(w); t(`"${w}" is not a stop`, decision(activate()), 'allow'); }
+  fs.rmSync(goFile, { force: true });
   fs.writeFileSync(path.join(T, 'docs/NEXT.md'), "# What's next\n\n1. Fix the mobile header. | sub-goal: 2\n2. Re-check the pricing page. | sub-goal: 5\n\nParked ideas (not ranked):\n- x\n");
   fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6 })); task('DONE', ['src/pages/**'], ['screenshot docs/notes/x.png'], 'PASS', { done: ['[x] a'] });
   fs.writeFileSync(goFile, JSON.stringify([{ name: '__goall__', ts: Date.now() }]));

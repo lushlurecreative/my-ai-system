@@ -660,5 +660,12 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('asks: the startup shows the record', /Button colour/.test(execSync(`node "${AK}/.claude/hooks/session-start.mjs"`, { input: JSON.stringify({ source: 'startup' }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: AK, AIS_NO_AUTOUPDATE: '1' } })), true);
   fs.rmSync(AK, { recursive: true, force: true });
 }
+{
+  const { noiseNumbers } = await import(`${SRC}/.claude/hooks/done-check.mjs`);
+  for (const bad of ['The change is done and 664 tests pass.', 'The live regression run passed 64 of 64.', 'All 57 test files pass after the change.', 'Pushed as commit 3fa9c21.', 'Updated to version 2026-11-07.2.', 'Done: 12 checks passed on the live site.']) t(`noise numbers: "${bad.slice(0, 40)}" -> block`, !!noiseNumbers(bad), true);
+  for (const ok of ['The change is done and the checks pass.', 'The delete button now works and the live page shows it.', 'I need a decision on the 3 pricing tiers.', 'Paste this:\n```\ngit log --oneline | head -3 # commit 3fa9c21\n```']) t(`noise numbers: fine: "${ok.slice(0, 40)}"`, noiseNumbers(ok), null);
+  asUser('How many tests pass?'); t('noise numbers: fine when Shaun asked', noiseNumbers('664 tests pass.', tr), null); fs.rmSync(tr, { force: true });
+  t('stop check: a report with a test count is sent back', decision(stopS('The change is done and 664 tests pass.', 'nn1')), 'block');
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -100,6 +100,15 @@ export function statusOnly(text, transcriptPath) {
   const words = body.split(/\s+/).filter(Boolean).length; const last = body.split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || body;
   return words <= 120 || STATUS.test(last) ? 'This is a status message, and Shaun wants none. Do not report that you are waiting, watching, checking or that something is under review or not live yet. Keep working silently: if you are waiting for something outside your control (a publish, a build), wait with a command that checks every 30 seconds for up to 10 minutes and do other work from the list meanwhile. Report only a result, good or bad. If it truly is not live after 10 minutes, say that once as a result ("not live after 10 minutes").' : null;
 }
+// Counts, hashes and version numbers: not his business. "664 tests pass", "passed 64 of 64", "commit 3fa9c21", "version 2026-11-07.2".
+const NOISE_NUMBERS = /\b\d+(?:\s+of\s+\d+)?\s+(?:tests?|checks?|test files|assertions)\s+(?:pass(?:ed|es)?|ran|run|green)\b|\bpassed\s+\d+\s+of\s+\d+\b|\ball\s+\d+\s+(?:tests?|checks?)\b|\bcommit\s+[0-9a-f]{7,40}\b|\bversion\s+\d{4}-\d{2}-\d{2}(?:\.\d+)?\b|\b(?:sha|hash)\s+[0-9a-f]{7,40}\b/i;
+const ASKED_COUNTS = /\b(?:how many|which version|what version|test count|commit|hash|sha)\b/i;
+export function noiseNumbers(text, transcriptPath) {
+  const body = String(text || '').replace(/```[\s\S]*?```/g, ' ');
+  const m = NOISE_NUMBERS.exec(body); if (!m) return null;
+  if (transcriptPath && ASKED_COUNTS.test(lastUserText(transcriptPath))) return null;
+  return `Shaun does not need "${m[0]}": counts, commit hashes and version numbers are not his business. Say that the checks pass (or the one thing that failed), and leave out how many ran, which commit, and which version.`;
+}
 // Results only: a long report is not read. Questions from Shaun and discussion mode are exempt.
 export function tooLong(text, transcriptPath, root) {
   if (discussionOn(root)) return null; if (transcriptPath && isQuestion(lastUserText(transcriptPath))) return null;
@@ -111,6 +120,7 @@ export function judge(message, root, transcriptPath) {
   const jh = jargonHits(text); if (jh.length >= 3 && !(transcriptPath && ASKED_ABOUT_CODE.test(lastUserText(transcriptPath)))) return `Your reply talks in file names and system terms (${jh.slice(0, 4).join(', ')}). Shaun does not read those and does not edit files. Rewrite it in plain English: the problem in one sentence, what you recommend, the exact text to paste and where (inside a code block), and the one thing he must do. No reasons unless he asked. Any pasting goes in a chat box; never ask him to open or edit a file.`;
   { const ap = askProblem(text, transcriptPath); if (ap) return ap; }
   { const so = statusOnly(text, transcriptPath); if (so) return so; }
+  { const nn = noiseNumbers(text, transcriptPath); if (nn) return nn; }
   { const tl = tooLong(text, transcriptPath, root); if (tl) return tl; }
   const last = text.slice(-700).split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || text.slice(-700);
   const spoken = last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ');

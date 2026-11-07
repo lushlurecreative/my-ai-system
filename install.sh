@@ -26,6 +26,12 @@ node -e '
 const fs=require("fs"),p=process.argv[1]+"/.claude/system.json",d=JSON.parse(fs.readFileSync(process.argv[2]+"/.claude/system.json","utf8"));
 let c={};try{c=JSON.parse(fs.readFileSync(p,"utf8"))}catch(e){}
 fs.writeFileSync(p,JSON.stringify({...d,...c})+"\n");' "$DST" "$SRC"
+# .mcp.json: add the headless browser server; keep every server the project already has
+node -e '
+const fs=require("fs"),p=process.argv[1]+"/.mcp.json",d=JSON.parse(fs.readFileSync(process.argv[2]+"/.mcp.json","utf8"));
+let c={};try{c=JSON.parse(fs.readFileSync(p,"utf8"))}catch(e){}
+c.mcpServers={...(c.mcpServers||{}),playwright:d.mcpServers.playwright};
+fs.writeFileSync(p,JSON.stringify(c,null,2)+"\n");' "$DST" "$SRC"
 cp "$SRC/VERSION" "$DST/.claude/system-version"
 touch "$DST/.gitignore"; grep -qx ".claude/approvals.json" "$DST/.gitignore" || echo ".claude/approvals.json" >> "$DST/.gitignore"
 grep -qx ".claude/discussion.json" "$DST/.gitignore" || echo ".claude/discussion.json" >> "$DST/.gitignore"

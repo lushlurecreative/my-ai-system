@@ -133,8 +133,30 @@ export function checkMasterTouch(root, cmd) {
   }
   return null;
 }
+
+// Browsers run in the background only. A visible window, Shaun's own browser, or a page opened on his screen is never allowed.
+export function checkBrowser(cmd) {
+  const q = quiet(String(cmd || ''));
+  const why = 'Browsers run in the background only. Never open a window, never open Shaun\'s own browser or tabs. Use the headless browser tool (playwright), or a headless script: one browser, one reused tab, close it when done.';
+  const segs = q.split(/&&|\|\||[;|\n]/).map((x) => x.trim()).filter(Boolean);
+  for (const seg of segs) {
+    const t = seg.replace(/^(?:sudo\s+|env\s+(?:\w+=\S*\s+)*|\w+=\S*\s+)+/, '');
+    const c0 = (t.split(/\s+/)[0] || '').split('/').pop().toLowerCase();
+    if (/^(open|xdg-open|gnome-open|wslview|sensible-browser|x-www-browser|firefox|safari|brave|brave-browser|opera|vivaldi|arc)$/.test(c0) && /(https?:|file:|\.html?\b|-a\s|--args|\s)/.test(' ' + t.slice(c0.length))) return deny(why);
+    if (c0 === 'start' && /https?:/.test(t)) return deny(why);
+    if (c0 === 'cmd' && /start\s+\S*\s*https?:/.test(t)) return deny(why);
+    if (c0 === 'osascript' && /(chrome|safari|firefox|brave|arc|edge|browser)/i.test(t)) return deny(why);
+    if (/^(google-chrome|google-chrome-stable|chrome|chromium|chromium-browser|msedge|microsoft-edge)$/.test(c0) && !/--headless/.test(t)) return deny(why);
+    if (/google chrome|chromium|microsoft edge/i.test(t) && /\/(?:contents\/macos\/)?(?:google chrome|chromium|microsoft edge)\b/i.test(t) && !/--headless/.test(t) && /^["']?\//.test(t)) return deny(why);
+  }
+  if (/headless\s*[:=]\s*(false|False|0)\b|--headed\b|\bheadless\s*=\s*False\b|\bplaywright\s+(open|codegen|show-trace)\b|\bpuppeteer\.launch\([^)]*headless\s*:\s*false|channel\s*[:=]\s*['"]chrome['"]/.test(q)) return deny(why);
+  if (/--remote-debugging-port/.test(q) && !/--headless/.test(q)) return deny(why);
+  if (/\bwebbrowser\.open|\bwebbrowser\.get\(|\bopen\(\s*['"]https?:|\bopenurl\b|require\(['"]open['"]\)|from\s+['"]open['"]|import\s+open\s+from/.test(q)) return deny(why);
+  return null;
+}
 export function checkBash(root, cmd) {
   const c = String(cmd || '');
+  { const b = checkBrowser(c); if (b) return b; }
   { const m = checkMasterTouch(root, c); if (m) return m; }
   const inst = checkInstall(root, c); if (inst) return inst;
   if (/TASK\.md/.test(c) && /Status:\s*ACTIVE/i.test(c) && /(>>?|\btee\b|\bsed\s+-\w*i|\bpython3?\b|\bnode\b|\bperl\b|\bawk\b)/.test(c)) { const g = gateActivation(root, c); if (g) return g; }

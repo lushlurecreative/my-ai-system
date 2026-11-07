@@ -781,5 +781,13 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   for (const ok of ['The delete button now works and the live page shows it.', 'A security check on the checkout page found nothing wrong.']) t(`system notes: fine: "${ok.slice(0, 40)}..."`, systemNote(ok), null);
   t('stop check: a message about a safety note on the system is sent back', decision(stopS('The safety notes about the master system are on the list for that chat.', 'sn1')), 'block');
 }
+{
+  for (const bad of ['open https://example.com', 'open -a "Google Chrome" http://localhost:3000', 'xdg-open http://localhost:5173', 'start https://example.com', 'google-chrome http://localhost:3000', 'chromium --remote-debugging-port=9222', '"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" http://x.com', 'npx playwright open https://example.com', 'npx playwright codegen https://x.com', 'npx playwright test --headed', 'node -e "chromium.launch({headless:false})"', 'python3 -c "import webbrowser; webbrowser.open(\'http://x.com\')"', "osascript -e 'tell application \"Google Chrome\" to open location \"http://x.com\"'", 'cd app && open http://localhost:3000']) t(`browser: visible launch refused: ${bad.slice(0, 45)}`, decision(bash(bad)), 'deny');
+  for (const ok of ['google-chrome --headless --screenshot=/tmp/a.png http://localhost:3000', 'curl -s https://example.com', 'git commit -m "open https://example.com in the report"', "echo 'xdg-open is blocked'", 'npx playwright test', 'ls /tmp', 'node -e "chromium.launch({headless:true})"']) t(`browser: background and normal commands pass: ${ok.slice(0, 45)}`, decision(bash(ok)), 'allow');
+  const st = JSON.parse(fs.readFileSync(path.join(SRC, '.claude/settings.json'), 'utf8')).permissions.deny;
+  for (const n of ['mcp__claude-in-chrome__*', 'mcp__Control_Chrome__*', 'mcp__Claude_Browser__*', 'mcp__plugin_browser-use_browser-use__*', 'mcp__chrome-devtools__*', 'mcp__plugin_playwright_playwright__*']) t(`browser: settings deny ${n}`, st.includes(n), true);
+  const mj = JSON.parse(fs.readFileSync(path.join(SRC, '.mcp.json'), 'utf8')).mcpServers.playwright.args;
+  t('browser: shipped playwright server is headless and isolated', mj.includes('--headless') && mj.includes('--isolated'), true);
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

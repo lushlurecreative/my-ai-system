@@ -33,6 +33,16 @@ Anything you can do with your tools, you do, as part of the task: without asking
 
 A real blocker is only: a password, login, code or other credential that only Shaun has; spending money; a business or product decision; a physical step on a device or account only he controls. Go as far as you can first (open the browser, go to the page, try the step). Then tell him once, in one short message: what you were doing, what you tried, what is blocking, and the one thing you need. For a login, open the sign-in page in the browser and ask him to sign in there; never ask him to type or paste a password into chat. Put every need in that one message, and keep working on whatever does not depend on it; one blocked item never stops the queue. A hook blocks replies that ask Shaun to run, open, check or paste back something you can do yourself.
 
+## Browsers run in the background
+
+Shaun never sees a browser. Never open a window, never touch his own browser or tabs, never pop a page onto his screen.
+
+- Use the headless `playwright` tool (set up by the system), or a headless script. Nothing else. Tools that drive his real Chrome or show a window are blocked.
+- Plain reading of a public page or API: use fetch or curl, no browser.
+- One browser session at a time, one tab, reused. Visit many pages in one script, not one tool call each. Take screenshots to files and look at the files. Close the browser when the task ends.
+- The browser starts clean each time (no saved logins). If a job truly needs a login, ask Shaun for the login in **What I need from you**; never log in through his own browser.
+- If the headless tool is missing or fails, say so in plain words and use fetch or curl. Never fall back to a visible browser.
+
 ## Hard blocks (hooks deny these; no prompt, no exception)
 
 - Every file listed in `PROTECTED.md`, unless the ACTIVE task card names that file (or its folder pattern) explicitly under Allowed paths: then the card is Shaun's approval and the edit is allowed and logged (file, task, time) in `.claude/protected-edits.log`, which only a hook writes. A broad pattern such as `src/**` does not count. The reviewer, the evidence rule and every other rule stay as they are.

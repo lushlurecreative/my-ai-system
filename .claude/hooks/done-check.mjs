@@ -84,6 +84,8 @@ export function askProblem(text, transcriptPath) {
   if (noCtx) return `The ask ${label(noCtx)} does not say when it came up or what he said or what was found. Add one short clause, for example "On Nov 3 you said ..." or "On Nov 5 the check found ...", so it makes sense to him days later.`;
   const noPick = sec.bullets.find((b) => /^I need (?:a decision|your (?:approval|yes|ok|okay))/i.test(plainBullet(b)) && !ASK_PICK.test(plainBullet(b)));
   if (noPick) return `The ask ${label(noPick)} gives no recommendation. Say what you would pick and why in a few words ("I'd go with blue because ...").`;
+  const stepAsk = sec.bullets.find((b) => /\b(?:paste|pasting|copy and paste|run this|run the command)\b/i.test(plainBullet(b)));
+  if (stepAsk) return `The ask ${label(stepAsk)} is a step for Shaun, not a decision. Do not ask for his yes to a step. Give it as "Do this:" with the one action in a short sentence and the exact text to paste in a code block, then "Where:" with the exact place, before the "What I need from you" section.`;
   const ops = sec.bullets.map((b) => ASK_OPS.exec(plainBullet(b))).find(Boolean);
   if (ops) return `An ask uses the word "${ops[0]}", which Shaun does not use. Say it in plain words (for example "put it live" instead of "redeploy"), and never mention the reviewer or a queue unless that is the thing he must decide.`;
   const before = earlierAsks(transcriptPath); const dup = sec.bullets.find((b) => before.has(normKey(b)));

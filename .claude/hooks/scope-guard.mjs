@@ -15,7 +15,12 @@ export function checkEdit(root, filePath) {
 }
 function checkEditCore(root, filePath, ctx) {
   const r = rel(root, filePath);
-  if (r.startsWith('..')) return deny(`Edits outside the project (${r}) are not allowed.`);
+  if (r.startsWith('..')) {
+    // Claude's own memory folder (~/.claude/projects/<project>/memory/...) is where builders keep what Shaun tells them to remember. It is the one place outside the project they may write.
+    const abs = path.resolve(root, String(filePath || '')).replace(/\\/g, '/'); const home = os.homedir().replace(/\\/g, '/');
+    if (abs.toLowerCase().startsWith((home + '/.claude/projects/').toLowerCase()) && /^[^/]+\/memory\/[^]*$/i.test(abs.slice((home + '/.claude/projects/').length)) && !abs.includes('/../')) return null;
+    return deny(`Edits outside the project (${r}) are not allowed.`);
+  }
   const am = r.match(/^\.claude\/agents\/([\w-]+)\.md$/); if (am && readApprovals(root).includes('agent:' + am[1].toLowerCase())) return null;
   const rl = r.toLowerCase();
   if (SELF.some((x) => x.toLowerCase() === rl) || SELF_DIRS.some((d) => rl.startsWith(d.toLowerCase()))) return isOverridden(root, r) ? null : deny(`${r} belongs to the system itself. You cannot change it and Shaun does not unlock it in chat. The fix belongs in the master system: tell Shaun in plain English the problem, what you recommend, and give him a ready prompt to paste into his master-system chat. No file names or code terms in your message to him.`);

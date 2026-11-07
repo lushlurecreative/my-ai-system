@@ -789,5 +789,11 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   const mj = JSON.parse(fs.readFileSync(path.join(SRC, '.mcp.json'), 'utf8')).mcpServers.playwright.args;
   t('browser: shipped playwright server is headless and isolated', mj.includes('--headless') && mj.includes('--isolated'), true);
 }
+{
+  const mem = path.join(os.homedir(), '.claude/projects/-Users-shaun-washwise/memory/feedback_browser.md');
+  t('memory: writing a note in the Claude memory folder -> allow', decision(run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: mem, content: 'x' } })), 'allow');
+  t('memory: the memory index file -> allow', decision(run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: path.join(os.homedir(), '.claude/projects/-Users-shaun-washwise/memory/MEMORY.md'), content: 'x' } })), 'allow');
+  for (const bad of ['.claude/settings.json', '.claude/CLAUDE.md', '.claude/projects/-Users-shaun-washwise/settings.json', '.claude/projects/x/memory/../../../settings.json', '.ssh/authorized_keys', '.bashrc']) t(`memory: other outside file stays refused: ${bad}`, decision(run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: path.join(os.homedir(), bad), content: 'x' } })), 'deny');
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

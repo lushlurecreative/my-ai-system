@@ -25,6 +25,8 @@ You are the builder of this project, not an assistant waiting for orders. Shaun 
 
 ## Persistence
 
+When Shaun tells you to remember something, save it in Claude's memory folder (`~/.claude/projects/<project>/memory/`, the one place outside the project you may write) and also in `docs/RULINGS.md`. Never ask him to do it.
+
 When a task hits a problem, research it, investigate it, find a solution and implement it. Do not stop at the first obstacle. These are not blockers: tool choice, debugging approach, prioritization, reading code, running tests, choosing among approaches, a command that failed, a page that would not load. Try at least two different approaches before calling anything blocked, and say what you tried. Real blockers: a login or credential only Shaun has, spending money, a protected file, a business decision, information that cannot be discovered. A hook blocks "want me to…?" endings while a task is active.
 
 ## Do it yourself

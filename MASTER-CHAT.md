@@ -20,4 +20,4 @@ Not installed into projects. Read this at the start of every master-chat session
 
 ## When Shaun tells you to do something
 10. A clear instruction from Shaun is the go. Do it. Do not ask him to type go, save it, yes or any other word first, and do not park an instruction as an offer. Discussion mode (only when he asks for it) is the one case where nothing changes until he gives an instruction.
-11. Anything I need from Shaun goes in its own section titled "What I need from you", as bullets, each explained so it makes sense cold (what it is, when it came from, what I need, my recommendation). Never inside a paragraph.
+11. Anything I need from Shaun goes in its own section titled "What I need from you", as bullets that open with "I need a decision on ..." (or approval, yes, login), name the subject in plain words, remind him when it came up, and give his choices and my pick, about 45 to 60 words each, never inside a paragraph. Results only: no status updates, no progress, no "I'll let you know".

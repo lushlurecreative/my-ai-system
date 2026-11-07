@@ -51,22 +51,71 @@ export function askSection(text) {
   for (const l of after) { consumed += l.length + 1; const b = l.match(/^\s*(?:[-*•]|\d+[.)])\s+(.+)$/); if (b) { started = true; bullets.push(b[1]); lastBullet = consumed; continue; } if (started && l.trim() && !/^\s{2,}\S/.test(l)) break; }
   return { heading: m[0], bullets, from: m.index, to: startAt + (started ? lastBullet : 0) };
 }
-export function askProblem(text) {
+const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
+const ASK_CONTEXT = new RegExp(`\\b(?:on ${MONTH}[a-z]*\\.? \\d{1,2}|yesterday|today|last (?:week|night)|this (?:morning|week)|you (?:said|asked|raised|told|mentioned|wanted|flagged)|(?:was|were) found|came up|found (?:on|during|while)|the (?:audit|check|test|walk)(?:-through)? (?:on|from|found))\\b`, 'i');
+const ASK_PICK = /\bI(?:'d| would| suggest| recommend)\b|\bmy (?:pick|recommendation)\b|\brecommend\b/i;
+const ASK_OPS = /\b(?:redeploy\w*|deploy\w*|publish\w*|reviewer|regression|suite|share-?link|endpoint|migration|lookup|commit\w*|push\w*|merge\w*|queue)\b/i;
+const plainBullet = (b) => b.replace(/[*_`]/g, '').trim();
+const normKey = (b) => plainBullet(b).toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').slice(0, 120);
+// Asks already shown earlier in this chat (so the same ask is never sent twice unless it changed).
+export function earlierAsks(transcriptPath) {
+  const keys = new Set(); if (!transcriptPath) return keys;
+  try {
+    const texts = []; for (const l of fs.readFileSync(transcriptPath, 'utf8').split('\n').filter(Boolean)) { try { const d = JSON.parse(l); if (d.type !== 'assistant') continue; const c = d.message?.content; const t = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b.type === 'text').map((b) => b.text).join('\n') : ''; if (t.trim()) texts.push(t); } catch {} }
+    texts.pop(); // the message being judged is the last one
+    for (const t of texts) { const sec = askSection(t); if (sec) for (const b of sec.bullets) keys.add(normKey(b)); }
+  } catch {}
+  return keys;
+}
+export function askProblem(text, transcriptPath) {
   const sec = askSection(text); const outside = sec ? text.slice(0, sec.from) + ' ' + text.slice(sec.to) : text;
-  if (sec && ASK_SIGNAL.test(outside)) return 'Something that waits on Shaun is written outside your "What I need from you" section. Move it into the section as its own explained bullet and take it out of the paragraph. Shaun rarely reads the paragraphs.';
-  if (!sec) return ASK_SIGNAL.test(text) ? 'You are telling Shaun that something waits on him, inside a paragraph. He rarely reads whole paragraphs. Put everything you need from him in its own section titled "What I need from you", as a bullet list, and keep it out of the paragraphs. Each bullet must make sense to someone who has forgotten the whole chat: a plain title, where it came from and when ("On Nov 3 you said ..."), what is going on in one or two plain sentences, what you need (a decision with the choices, a yes, a login, money, or a step), and your recommendation. Take the facts from docs/ASKS.md and write them in.' : null;
+  if (sec && ASK_SIGNAL.test(outside)) return 'Something that waits on Shaun is written outside your "What I need from you" section. Move it into the section as its own bullet and take it out of the paragraph. Shaun rarely reads the paragraphs.';
+  if (!sec) return ASK_SIGNAL.test(text) ? 'You are telling Shaun that something waits on him, inside a paragraph. Put it in its own section titled "What I need from you", as bullets. Each bullet opens with "I need a decision on ...", "I need your approval to ...", "I need your yes to ...", "I need a login for ..." or similar, then the subject in plain words, a reminder of when it came up and what he said or what was found, his choices, and your pick. Three or four short lines, never a paragraph. Take the facts from docs/ASKS.md.' : null;
   if (!sec.bullets.length) return 'Your "What I need from you" section has no bullets. List each thing you need from Shaun as a bullet, or remove the section if nothing is needed.';
-  const bare = sec.bullets.filter((b) => { const plain = b.replace(/[*_`]/g, '').trim(); return plain.split(/\s+/).length < 14 || plain.length < 70; });
-  if (bare.length) return `A bullet in "What I need from you" is too short to understand cold ("${bare[0].replace(/[*_`]/g, '').slice(0, 60)}"). Shaun did not write it and may not remember it. Rewrite each bullet in plain words: what it is about, where it came from and when ("On Nov 3 you said ..." or "On Nov 5 the reviewer found ..."), what is going on, exactly what you need from him, and your recommendation. One short paragraph at most per bullet; take the facts from docs/ASKS.md.`;
+  if (sec.bullets.length > 3) return `You listed ${sec.bullets.length} asks. Show at most 3, the most important, and end with one line such as "2 more are waiting; say list to see them." Shaun does not have time for more.`;
+  const label = (b) => `"${plainBullet(b).slice(0, 50)}"`;
+  const notAsk = sec.bullets.find((b) => !/^I need\b/i.test(plainBullet(b)));
+  if (notAsk) return `The ask ${label(notAsk)} must open with "I need ...", saying what kind of thing it is: "I need a decision on ...", "I need your approval to ...", "I need your yes to ...", "I need a login for ...". Then the subject in plain words, when it came up, his choices and your pick.`;
+  const shortOne = sec.bullets.find((b) => plainBullet(b).split(/\s+/).length < 14);
+  if (shortOne) return `The ask ${label(shortOne)} is too short to understand cold. Shaun did not write it and may not remember it. After "I need ..." and the subject, add when it came up and what he said or what was found, his choices, and your pick. Three or four short lines.`;
+  const longOne = sec.bullets.find((b) => plainBullet(b).split(/\s+/).length > 75);
+  if (longOne) return `The ask ${label(longOne)} is too long. Shaun does not read paragraphs. Cut it to about 45 to 60 words: what you need, the subject, when it came up, his choices, your pick. More detail only if he asks.`;
+  const noCtx = sec.bullets.find((b) => !ASK_CONTEXT.test(plainBullet(b)));
+  if (noCtx) return `The ask ${label(noCtx)} does not say when it came up or what he said or what was found. Add one short clause, for example "On Nov 3 you said ..." or "On Nov 5 the check found ...", so it makes sense to him days later.`;
+  const noPick = sec.bullets.find((b) => /^I need (?:a decision|your (?:approval|yes|ok|okay))/i.test(plainBullet(b)) && !ASK_PICK.test(plainBullet(b)));
+  if (noPick) return `The ask ${label(noPick)} gives no recommendation. Say what you would pick and why in a few words ("I'd go with blue because ...").`;
+  const ops = sec.bullets.map((b) => ASK_OPS.exec(plainBullet(b))).find(Boolean);
+  if (ops) return `An ask uses the word "${ops[0]}", which Shaun does not use. Say it in plain words (for example "put it live" instead of "redeploy"), and never mention the reviewer or a queue unless that is the thing he must decide.`;
+  const before = earlierAsks(transcriptPath); const dup = sec.bullets.find((b) => before.has(normKey(b)));
+  if (dup) return `You already showed this ask earlier in this chat: ${label(dup)}. Do not repeat an ask unless it has changed. Leave the section out, or show only new or changed asks, and give just the result.`;
   return null;
+}
+// Status messages: "waiting on the reviewer", "I'll let you know", "about 8 of 63 checks done". Shaun wants the result, not the progress.
+const STATUS = /\b(?:still waiting|waiting (?:on|for) (?:the )?(?:reviewer|publish|build|deploy|queue|lovable)|I'?m (?:watching|checking|monitoring|polling|waiting)|I'?ll (?:let you know|check back|read it back|keep (?:watching|checking))|(?:the )?reviewer (?:has not|hasn'?t|is (?:checking|still))|(?:is|are|isn'?t|aren'?t) (?:still )?not (?:live|published) yet|not (?:live|published) yet|still (?:running|publishing|building)|once the reviewer|\d+ of \d+ (?:checks|tests|files)|(?:the )?task card stays open)\b/i;
+const ASKED_STATUS = /\b(?:status|where are we|what'?s (?:going on|happening|the update)|are you (?:done|finished)|how'?s it going|update me|progress)\b/i;
+export function statusOnly(text, transcriptPath) {
+  const sec = askSection(text); const body = (sec ? text.slice(0, sec.from) + ' ' + text.slice(sec.to) : text).trim();
+  if (!STATUS.test(body) || /\bafter \d+ (?:minutes|hours)\b/i.test(body)) return null;
+  if (transcriptPath && (ASKED_STATUS.test(lastUserText(transcriptPath)) || isQuestion(lastUserText(transcriptPath)))) return null;
+  const words = body.split(/\s+/).filter(Boolean).length; const last = body.split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || body;
+  return words <= 120 || STATUS.test(last) ? 'This is a status message, and Shaun wants none. Do not report that you are waiting, watching, checking or that something is under review or not live yet. Keep working silently: if you are waiting for something outside your control (a publish, a build), wait with a command that checks every 30 seconds for up to 10 minutes and do other work from the list meanwhile. Report only a result, good or bad. If it truly is not live after 10 minutes, say that once as a result ("not live after 10 minutes").' : null;
+}
+// Results only: a long report is not read. Questions from Shaun and discussion mode are exempt.
+export function tooLong(text, transcriptPath, root) {
+  if (discussionOn(root)) return null; if (transcriptPath && isQuestion(lastUserText(transcriptPath))) return null;
+  const sec = askSection(text); const body = (sec ? text.slice(0, sec.from) + ' ' + text.slice(sec.to) : text).replace(/```[\s\S]*?```/g, ' ').trim();
+  return body.split(/\s+/).filter(Boolean).length > 140 ? 'This report is too long. Shaun reads results, not narration, and does not read long blocks. Give the result in at most three short lines (what is done, what is live, what failed), and put anything he must decide in the "What I need from you" section. Cut everything else; the detail is in docs/FIXED.md and the task card.' : null;
 }
 export function judge(message, root, transcriptPath) {
   const text = String(message || '').replace(/[‘’]/g, "'").trim(); if (!text) return null;
   const jh = jargonHits(text); if (jh.length >= 3 && !(transcriptPath && ASKED_ABOUT_CODE.test(lastUserText(transcriptPath)))) return `Your reply talks in file names and system terms (${jh.slice(0, 4).join(', ')}). Shaun does not read those and does not edit files. Rewrite it in plain English: the problem in one sentence, what you recommend, the exact text to paste and where (inside a code block), and the one thing he must do. No reasons unless he asked. Any pasting goes in a chat box; never ask him to open or edit a file.`;
-  { const ap = askProblem(text); if (ap) return ap; }
+  { const ap = askProblem(text, transcriptPath); if (ap) return ap; }
+  { const so = statusOnly(text, transcriptPath); if (so) return so; }
+  { const tl = tooLong(text, transcriptPath, root); if (tl) return tl; }
   const last = text.slice(-700).split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || text.slice(-700);
   const spoken = last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ');
-  if (PICK.some((r) => r.test(last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ')))) return 'Do not ask Shaun to pick an order, to say where to start, or whether you should start. He is the boss and has told you to carry on. Decide the order yourself (most customer-damaging first), do the work, and tell him afterwards what you found and fixed, in plain words. Ask him only for a password or login, money or a card, a physical step, or a real business decision.';
+  const askSec = askSection(text); const outsideAsk = (askSec ? text.slice(0, askSec.from) + ' ' + text.slice(askSec.to) : text).trim(); const lastOutside = outsideAsk.slice(-700).split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || outsideAsk;
+  if (PICK.some((r) => r.test(lastOutside.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ')))) return 'Do not ask Shaun to pick an order, to say where to start, or whether you should start. He is the boss and has told you to carry on. Decide the order yourself (most customer-damaging first), do the work, and tell him afterwards what you found and fixed, in plain words. Ask him only for a password or login, money or a card, a physical step, or a real business decision.';
   if (discussionOn(root)) return null; // discussion mode: a plain conversational reply is fine; the edit blocks still apply
   if (!HANDOFF.test(last) && ANNOUNCE.test(spoken)) return `Your reply ends by announcing work ("${spoken.match(ANNOUNCE)[0]}") instead of doing it. Do it now, or end in a valid stop: done with evidence plus the numbered list (autopilot off) or the next task started (autopilot on), a question only Shaun can answer, or a named blocker.`;
   const t = readTask(root);

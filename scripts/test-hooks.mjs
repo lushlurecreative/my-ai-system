@@ -615,7 +615,7 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
 // ---- additions: "What I need from you" section ----
 {
   const { askProblem, askSection } = await import(`${SRC}/.claude/hooks/done-check.mjs`);
-  const good = 'I fixed the delete button.\n\n**What I need from you**\n- **Decision: the colour of the Calculate button.** On Nov 3 you said the Calculate button on the home page is red and should be blue. I have not changed it yet because it is the main button. Should I make it blue? I recommend yes, because blue matches the rest of the page.\n- **Your yes: sending the sample sites to five businesses.** On Nov 5 we added five new sample sites to the list. Sending means messaging five real businesses, so I will not do it without your yes. I recommend you look at the five names first.';
+  const good = "I fixed the delete button.\n\n**What I need from you**\n- **I need a decision on the Calculate button colour.** On Nov 3 you said red was a bad colour and it should be blue. I have not changed it. Blue, or leave it red? I'd go blue because it matches the rest of the page.\n- **I need your yes to message five businesses about the new sample sites.** On Nov 5 we added them to the list. Nothing has been sent. I'd look at the five names first, then say yes.";
   t('asks: a clear section with two explained bullets -> fine', askProblem(good), null);
   t('asks: no ask at all -> fine', askProblem('I fixed the delete button and checked it on the live site.'), null);
   t('asks: the section is found', askSection(good).bullets.length, 2);
@@ -625,6 +625,30 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('asks: an empty section -> block', !!askProblem('Done.\n\n**What I need from you**\n\nNothing yet.'), true);
   t('asks: "Things I need from you" is also accepted', askProblem(good.replace('What I need from you', 'Things I need from you')), null);
   t('asks: "needs your decision" in the section is fine, outside it is not', !!askProblem(good + '\n\nThe reviewer needs your decision too.'), true);
+  const sect = (b) => `Done.\n\n**What I need from you**\n${b}`;
+  for (const [label, bullet] of [
+    ['does not open with "I need"', '- **Decision: the colour of the Calculate button.** On Nov 3 you said red was a bad colour and it should be blue. Blue, or leave it red? I\'d go blue because it matches the page.'],
+    ['has no reminder of when it came up', '- **I need a decision on the Calculate button colour.** Should it be blue or stay red? I\'d go blue because it matches the rest of the page and the other buttons.'],
+    ['has no recommendation', '- **I need a decision on the Calculate button colour.** On Nov 3 you said red was a bad colour and it should be blue. I have not changed it. Blue, or leave it red?'],
+    ['uses an ops word', '- **I need your approval to redeploy the lender fix.** On Nov 6 the check found it is pushed but not live. Yes or no? I\'d say yes because it closes a paid-content leak.'],
+    ['uses the word reviewer', '- **I need your approval to go live.** On Nov 6 the reviewer passed the fix for the lender link. Yes or no? I\'d say yes because it closes a paid-content leak for lenders.'],
+    ['is too short', '- **I need a decision on the button.** Blue? I\'d say yes.'],
+    ['is too long', '- **I need a decision on the Calculate button colour.** On Nov 3 you said red was a bad colour and it should be blue and then we talked about the rest of the home page and how the other buttons look and whether the header should change as well, and you mentioned the footer links and the pricing page layout and that the sample listing text felt a little too long for phone screens, and I noted all of that down in the list for later. Blue, or leave it red? I\'d go blue because it matches the rest of the page and the other buttons around it.'],
+  ]) t(`asks: a bullet that ${label} -> block`, !!askProblem(sect(bullet)), true);
+  const ok3 = '- **I need a decision on the Calculate button colour.** On Nov 3 you said red was a bad colour and it should be blue. Blue, or leave it red? I\'d go blue because it matches the page.';
+  t('asks: four asks at once -> block', !!askProblem(sect([ok3, ok3.replace('colour', 'size'), ok3.replace('colour', 'wording'), ok3.replace('colour', 'icon')].join('\n'))), true); t('asks: three asks at once are fine', askProblem(sect([ok3, ok3.replace('colour', 'size'), ok3.replace('colour', 'wording')].join('\n'))), null);
+  const trp = path.join(os.tmpdir(), 'ais-asks-tr.jsonl'); const asst = (txt) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: txt }] } });
+  fs.writeFileSync(trp, [asst(good), asst(good)].join('\n') + '\n'); t('asks: the same ask shown earlier in this chat -> block', !!askProblem(good, trp), true);
+  fs.writeFileSync(trp, [asst('Something else entirely.'), asst(good)].join('\n') + '\n'); t('asks: a new ask is fine', askProblem(good, trp), null);
+  fs.writeFileSync(trp, [asst(good.replace('blue', 'green').replace('five businesses', 'six businesses')), asst(good)].join('\n') + '\n'); t('asks: a changed ask is fine', askProblem(good, trp), null); fs.rmSync(trp, { force: true });
+  const { statusOnly, tooLong } = await import(`${SRC}/.claude/hooks/done-check.mjs`);
+  for (const st of ['The reviewer has not returned a verdict on the customer walk yet, so the task card stays open. Nothing is pushed for it.', 'The state-page links aren\'t live yet. I\'m watching for the next build to go live.', 'The suite is running, about 8 of 63 checks done, all passing so far. I\'m waiting for it to finish.', 'Pushed. I\'ll let you know when Lovable has published it.']) t(`status: "${st.slice(0, 40)}..." -> block`, !!statusOnly(st), true);
+  for (const ok of ['State pages now list their listings as links, and the live site shows them.', 'The state pages are not live after 10 minutes; Lovable is still working through earlier builds.', 'The live regression run passed 64 of 64.']) t(`status: a result is fine: "${ok.slice(0, 40)}..."`, statusOnly(ok), null);
+  asUser('What is the status?'); t('status: fine when Shaun asked for the status', statusOnly('The reviewer has not returned yet.', tr), null); fs.rmSync(tr, { force: true });
+  const long = ('The page loads and the numbers match. ').repeat(30); t('length: a report over 140 words -> block', !!tooLong(long, null, T), true); t('length: a short report is fine', tooLong('The page loads and the numbers match.', null, T), null);
+  t('length: a code block is not counted', tooLong('Paste this:\n```\n' + 'x '.repeat(300) + '\n```\nDone.', null, T), null);
+  asUser('How does the pricing work?'); t('length: a long answer to Shaun\'s question is fine', tooLong(long, tr, T), null); fs.rmSync(tr, { force: true });
+  t('stop check: a status-only message is sent back to work', decision(stopS('The reviewer has not returned a verdict yet, so the task card stays open.', 'st1')), 'block');
   fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6 })); task('NONE', [], [], '');
   t('asks: the stop check blocks a buried ask', decision(stopS('I fixed the delete button. It is waiting on you for the colour decision.', 'as1')), 'block');
   t('asks: the stop check lets a proper section through', decision(stopS(good, 'as2')), 'allow');

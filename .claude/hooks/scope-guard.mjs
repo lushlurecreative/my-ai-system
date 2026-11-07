@@ -45,10 +45,37 @@ function checkTools(root, t) {
 }
 // Adding software: npm/yarn/pnpm/bun add of a package, pip/pipx/uv, brew/apt/cargo/go, claude mcp/plugin add, npx -y, or piping a download into a shell.
 const INSTALL = /\b(?:npm\s+(?:install|i|add)\s+(?:-\S+\s+)*[@\w]|yarn\s+add\s|pnpm\s+(?:add|install|i)\s+(?:-\S+\s+)*[@\w]|bun\s+(?:add|install|i)\s+(?:-\S+\s+)*[@\w]|pipx?\s+install\b|pip3\s+install\b|uv\s+(?:pip\s+install|add|tool\s+install)\b|brew\s+install\b|apt(?:-get)?\s+install\b|cargo\s+install\b|go\s+install\b|claude\s+(?:mcp\s+add|plugins?\s+(?:install|add))\b|npx\s+(?:-y|--yes)\b|(?:curl|wget)\b[^|;&]*\|\s*(?:ba|z)?sh\b)/i;
+// Installing software. Read the command, take every package it installs, and approve only when each one is exactly on Shaun's approved list (agent approvals never count). A chained, piped, redirected or substituted command is refused whatever it contains, so an approved name can never carry extra packages or a second command.
+const VALUE_FLAGS = new Set(['--registry', '--prefix', '-w', '--workspace', '--tag', '--cache', '--userconfig', '--index-url', '-i', '--extra-index-url', '-c', '--constraint', '--target', '-t', '--root', '--python', '-p', '--transport', '-s', '--scope', '-H', '--header', '-e', '--env', '--version', '--git', '--path', '--branch', '--rev', '--tag', '--features']);
+const normPkg = (t) => { const x = String(t).replace(/^["']|["']$/g, ''); const m = x.match(/^(@[^/@\s]+\/[^@=<>!~\[\s;]+)/) || x.match(/^([^@=<>!~\[\s;]+)/); return (m ? m[1] : x).toLowerCase(); };
+const isLocalPath = (t) => /^(?:\.{1,2}(?:\/|$)|\/|~\/)/.test(t) && !/^[a-z][a-z0-9+.-]*:\/\//i.test(t);
+export function installPackages(c) {
+  const clean = quiet(String(c || '')); const bare = NOISE(clean);
+  if (/(?:&&|\|\||[;|\n`<>]|\$\()/.test(bare)) return { error: 'An install must be a single command by itself, with nothing chained, piped, redirected or substituted next to it. Run the install on its own.' };
+  const toks = (clean.match(/"[^"]*"|'[^']*'|\S+/g) || []).map((t) => t.replace(/^["']|["']$/g, ''));
+  let k = 0; while (k < toks.length && (/^\w+=\S*$/.test(toks[k]) || toks[k] === 'sudo' || toks[k] === 'time')) k++;
+  const mgr = (toks[k] || '').replace(/^.*\//, '').toLowerCase(); let a = toks.slice(k + 1); const pk = [];
+  const take = (list, afterDashDash = false) => { for (let n = 0; n < list.length; n++) { const t = list[n]; if (t === '--') { if (afterDashDash) continue; break; } if (t.startsWith('-')) { if (/^(?:-r|--requirement)$/.test(t)) { pk.push(`requirements:${list[n + 1] || ''}`); n++; } else if (VALUE_FLAGS.has(t)) n++; continue; } if (isLocalPath(t) || t === '.') continue; pk.push(normPkg(t)); } };
+  if (mgr === 'npx' || mgr === 'bunx') { const first = a.findIndex((t) => !t.startsWith('-')); if (first >= 0) pk.push(normPkg(a[first])); }
+  else if (mgr === 'claude') {
+    const sub = a.slice(0, 2).join(' ').toLowerCase();
+    if (/^mcp add/.test(sub)) { const rest = a.slice(2); const dd = rest.indexOf('--'); const head = dd < 0 ? rest : rest.slice(0, dd); const tail = dd < 0 ? [] : rest.slice(dd + 1); for (let n = 0; n < head.length; n++) { const t = head[n]; if (t.startsWith('-')) { if (VALUE_FLAGS.has(t)) n++; continue; } pk.push(normPkg(t)); break; } const runner = (tail[0] || '').replace(/^.*\//, ''); if (/^(?:npx|bunx|uvx|pnpx)$/.test(runner)) { const f = tail.slice(1).find((t) => !t.startsWith('-')); if (f) pk.push(normPkg(f)); } }
+    else if (/^plugins? (?:install|add)/.test(sub)) { for (const t of a.slice(2)) { if (t.startsWith('-')) continue; pk.push(normPkg(t)); } }
+  } else {
+    const verbAt = a.findIndex((t) => /^(?:install|i|add)$/.test(t)); let rest = verbAt >= 0 ? a.slice(verbAt + 1) : a;
+    if (mgr === 'uv' && a[0] === 'pip') rest = a.slice(a.findIndex((t) => t === 'install') + 1); if (mgr === 'uv' && a[0] === 'tool') rest = a.slice(a.findIndex((t) => t === 'install') + 1);
+    take(rest);
+  }
+  return pk.length ? { packages: pk } : { error: 'This install names no package that can be checked against the approved list. Name the package.' };
+}
 function checkInstall(root, c) {
   if (!INSTALL.test(c)) return null;
-  const lower = c.toLowerCase(); if (readApprovals(root).some((n) => lower.includes(n))) return null;
-  return deny('Installing software needs Shaun\'s yes. Tell him in two lines what you want to install and why. He answers in chat, for example "yes, install <name>", and then this command is allowed. Never work around this.');
+  const hint = 'He answers in chat, for example "yes, install <name>" (for several: "yes, install a, b"), and then that command is allowed. Never work around this.';
+  const r = installPackages(c); if (r.error) return deny(`${r.error} Installing software needs Shaun's yes. ${hint}`);
+  const approved = new Set(readApprovals(root).filter((n) => !n.startsWith('agent:')).map((n) => normPkg(n)));
+  const missing = [...new Set(r.packages)].filter((p) => !approved.has(p));
+  if (!missing.length) return null;
+  return deny(`Installing ${missing.join(', ')} needs Shaun's yes. Tell him in two lines what you want to install and why. ${hint}`);
 }
 // A task starts only on Shaun's go. approve.mjs records the go from his own chat message; opening a task (Status: ACTIVE) uses it up. Autopilot skips the gate.
 export function gateActivation(root, text) {

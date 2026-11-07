@@ -50,4 +50,4 @@ export const overrides = (root) => [...vals(root, 'allow'), ...typed(root, 'file
 export const allowedDb = (root) => [...vals(root, 'allow-db'), ...typed(root, 'db')];
 export const allowedMigrations = (root) => vals(root, 'allow-migration');
 export const allowedWords = (root) => [...vals(root, 'allow-words'), ...typed(root, 'word')].map((s) => s.toLowerCase());
-export function isOverridden(root, rel) { return overrides(root).some((o) => o === '*' || rel === o || rel.endsWith('/' + o) || (o.includes('*') && globRe(o).test(rel))); }
+export function isOverridden(root, rel) { const rl = String(rel).toLowerCase(); return overrides(root).some((o) => { const ol = String(o).toLowerCase(); return o === '*' || rl === ol || rl.endsWith('/' + ol) || (o.includes('*') && globRe(o).test(rel)); }); }

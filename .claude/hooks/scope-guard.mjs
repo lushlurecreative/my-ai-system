@@ -6,7 +6,7 @@ import { isOverridden, unlockHint } from './override.mjs';
 import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf, projectRoot } from './common.mjs';
 const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS|FIXED|ASKS)\.md$/, /^docs\/notes\//];
 // A shortcut (symlink) in the project can point at a protected file, a system file or a folder outside the project. The check runs on the path as given AND on where it really lands; either one failing refuses the edit.
-const realOf = (p) => { try { return fs.realpathSync(p); } catch { try { return path.join(fs.realpathSync(path.dirname(p)), path.basename(p)); } catch { return null; } } };
+const realOf = (p) => { try { return fs.realpathSync.native(p); } catch { try { return path.join(fs.realpathSync.native(path.dirname(p)), path.basename(p)); } catch { return null; } } };
 export function checkEdit(root, filePath) {
   const ctx = {}; let res = checkEditCore(root, filePath, ctx);
   if (!res) { const abs = path.resolve(root, String(filePath || '')); const real = realOf(abs); const rr = realOf(root); if (real && rr && real !== abs) res = checkEditCore(rr, real, ctx); }
@@ -17,9 +17,10 @@ function checkEditCore(root, filePath, ctx) {
   const r = rel(root, filePath);
   if (r.startsWith('..')) return deny(`Edits outside the project (${r}) are not allowed.`);
   const am = r.match(/^\.claude\/agents\/([\w-]+)\.md$/); if (am && readApprovals(root).includes('agent:' + am[1].toLowerCase())) return null;
-  if (SELF.includes(r) || SELF_DIRS.some((d) => r.startsWith(d))) return isOverridden(root, r) ? null : deny(`${r} belongs to the system itself. You cannot change it and Shaun does not unlock it in chat. The fix belongs in the master system: tell Shaun in plain English the problem, what you recommend, and give him a ready prompt to paste into his master-system chat. No file names or code terms in your message to him.`);
+  const rl = r.toLowerCase();
+  if (SELF.some((x) => x.toLowerCase() === rl) || SELF_DIRS.some((d) => rl.startsWith(d.toLowerCase()))) return isOverridden(root, r) ? null : deny(`${r} belongs to the system itself. You cannot change it and Shaun does not unlock it in chat. The fix belongs in the master system: tell Shaun in plain English the problem, what you recommend, and give him a ready prompt to paste into his master-system chat. No file names or code terms in your message to him.`);
   const P = lists(root);
-  const entries = P.files.filter((f) => r === f || globRe(f).test(r));
+  const entries = P.files.filter((f) => rl === f.toLowerCase() || globRe(f).test(r));
   if (entries.length) {
     if (isOverridden(root, r)) return null;
     if (cardCovers(root, [r, ...entries])) ctx.viaCard = true; // the task card is the approval; the normal task checks below still apply
@@ -117,14 +118,14 @@ const GIT_WRITE = new Set(['commit', 'push', 'reset', 'checkout', 'switch', 'cle
 const FILE_WRITE = new Set(['cp', 'mv', 'rm', 'tee', 'ln', 'touch', 'mkdir', 'truncate', 'chmod', 'chown', 'dd', 'install', 'rsync', 'rmdir', 'unlink']);
 export function checkMasterTouch(root, cmd) {
   const master = masterPathOf(root); const name = path.basename(master); if (!name || path.resolve(master) === path.resolve(root)) return null;
-  const text = quiet(String(cmd || '')); if (!text.includes(name)) return null;
+  const text = quiet(String(cmd || '')); const nameL = name.toLowerCase(); if (!text.toLowerCase().includes(nameL)) return null;
   const why = deny('The master system folder is not part of this project. Do not change it from here. If the master needs a fix, tell Shaun in plain English the problem and what you recommend, and give him a ready prompt for his master-system chat.');
   let inMaster = false;
   for (const seg of text.split(/&&|\|\||[;|\n]/)) {
     const toks = seg.trim().split(/\s+/).filter(Boolean); if (!toks.length) continue;
     let k = 0; while (toks[k] === 'sudo' || /^\w+=\S*$/.test(toks[k] || '')) k++; const c0 = (toks[k] || '').replace(/^.*\//, ''); const args = toks.slice(k + 1);
-    if (c0 === 'cd' || c0 === 'pushd') { inMaster = args.some((a) => a.includes(name)); continue; }
-    const touches = inMaster || seg.includes(name); if (!touches) continue;
+    if (c0 === 'cd' || c0 === 'pushd') { inMaster = args.some((a) => a.toLowerCase().includes(nameL)); continue; }
+    const touches = inMaster || seg.toLowerCase().includes(nameL); if (!touches) continue;
     if (c0 === 'git') { let j = 0; while (j < args.length && args[j].startsWith('-')) j += /^-[Cc]$/.test(args[j]) ? 2 : 1; const sub = args[j]; if (GIT_WRITE.has(sub) && !(sub === 'remote' && args[j + 1] === '-v')) return why; }
     if (FILE_WRITE.has(c0)) return why;
     if (c0 === 'sed' && args.some((a) => /^-[a-zA-Z]*i/.test(a))) return why;
@@ -144,7 +145,7 @@ export function checkBash(root, cmd) {
     if (toMain) { const t = readTask(root); if (t.status !== 'DONE' || t.evidence === 0 || !/PASS/i.test(t.verdict)) return deny(`Push to main is allowed only when docs/TASK.md is DONE with Evidence and a Reviewer verdict PASS (now: ${t.status}, ${t.evidence} evidence lines, verdict "${t.verdict || 'none'}").`); }
   }
   if (/\brm\s+-[a-zA-Z]*r[a-zA-Z]*f|\brm\s+-[a-zA-Z]*f[a-zA-Z]*r|\bgit\s+reset\s+--hard|\bgit\s+checkout\s+--\s+\.|\bgit\s+clean\s+-[a-zA-Z]*f|\bdb\s+reset\b|\bdrop\s+(table|schema|database)\b|\btruncate\s+table\b/i.test(c)) return deny('Destructive command blocked (rm -rf, git reset --hard, git clean, db reset, DROP, TRUNCATE). Ask Shaun.');
-  const q = quiet(c); const mentionsSelf = (x) => [...SELF, ...SELF_DIRS].some((s) => x.includes(s));
+  const q = quiet(c); const mentionsSelf = (x) => { const xl = String(x).toLowerCase(); return [...SELF, ...SELF_DIRS].some((s) => xl.includes(s.toLowerCase())); };
   const redirectToSelf = [...q.matchAll(/(?<!>)(?:\d|&)?>>?(?!&)\s*["']?([^\s;&|<>()"']+)/g)].some((m) => mentionsSelf(m[1]));
   if (redirectToSelf || (mentionsSelf(q) && /(\btee\b|\bsed\s+-i|\bmv\b|\bcp\b|\brm\b|<<)/.test(q)) || (mentionsSelf(c) && /\bwriteFile/.test(c))) return deny('Shell writes to CLAUDE.md, PROTECTED.md or .claude/ are not allowed. Only Shaun edits the rules.');
   return checkShellWrites(root, c);

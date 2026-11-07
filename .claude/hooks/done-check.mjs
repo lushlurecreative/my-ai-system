@@ -110,6 +110,12 @@ export function referBack(text) {
   if (/```/.test(String(text))) return null; // the full text is in this message
   return 'You point Shaun back at earlier text ("the same box", "the earlier text", "I\'ll resend it"). He does not scroll back. Put the full text he must paste in this message, in a code block, with Do this and Where.';
 }
+// Safety notes about the system itself are the master's business, never Shaun's.
+const SYSTEM_NOTE = /\b(?:safety|security) notes?\b[^.\n]{0,80}\b(?:master|system|hooks?|guards?|checks?)\b|\bmaster[- ]system chat\b|\b(?:background )?security review (?:found|flagged)\b[^.\n]{0,80}\b(?:hooks?|guards?|\.claude|master|system)\b/i;
+export function systemNote(text) {
+  const body = String(text || '').replace(/```[\s\S]*?```/g, ' ');
+  return SYSTEM_NOTE.test(body) ? 'Do not tell Shaun about automated security notes on the system itself. Those belong to the master system and are handled there, not here. Leave it out of your reply entirely, and do not ask him whether to send it anywhere.' : null;
+}
 // Counts, hashes and version numbers: not his business. "664 tests pass", "passed 64 of 64", "commit 3fa9c21", "version 2026-11-07.2".
 const NOISE_NUMBERS = /\b\d+(?:\s+of\s+\d+)?\s+(?:tests?|checks?|test files|assertions)\s+(?:pass(?:ed|es)?|ran|run|green)\b|\bpassed\s+\d+\s+of\s+\d+\b|\ball\s+\d+\s+(?:tests?|checks?)\b|\bcommit\s+[0-9a-f]{7,40}\b|\bversion\s+\d{4}-\d{2}-\d{2}(?:\.\d+)?\b|\b(?:sha|hash)\s+[0-9a-f]{7,40}\b/i;
 const ASKED_COUNTS = /\b(?:how many|which version|what version|test count|commit|hash|sha)\b/i;
@@ -130,6 +136,7 @@ export function judge(message, root, transcriptPath) {
   const jh = jargonHits(text); if (jh.length >= 3 && !(transcriptPath && ASKED_ABOUT_CODE.test(lastUserText(transcriptPath)))) return `Your reply talks in file names and system terms (${jh.slice(0, 4).join(', ')}). Shaun does not read those and does not edit files. Rewrite it in plain English: the problem in one sentence, what you recommend, the exact text to paste and where (inside a code block), and the one thing he must do. No reasons unless he asked. Any pasting goes in a chat box; never ask him to open or edit a file.`;
   { const ap = askProblem(text, transcriptPath); if (ap) return ap; }
   { const so = statusOnly(text, transcriptPath); if (so) return so; }
+  { const sn = systemNote(text); if (sn) return sn; }
   { const nn = noiseNumbers(text, transcriptPath); if (nn) return nn; }
   { const rb = referBack(text); if (rb) return rb; }
   { const tl = tooLong(text, transcriptPath, root); if (tl) return tl; }

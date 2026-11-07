@@ -761,5 +761,25 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   xcard('DONE', ['src/lib/pricing.ts']); t('exec write: not allowed once the card is DONE', xs(`python3 -c "open('src/lib/pricing.ts','w').write('x')"`), 'deny');
   fs.rmSync(XP, { recursive: true, force: true });
 }
+// ---- additions: file-name case never matters; no chatter about notes on the system itself ----
+{
+  const XC = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-case-')); execSync(`bash "${SRC}/install.sh" "${XC}"`, { stdio: 'ignore' });
+  fs.writeFileSync(path.join(XC, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/lib/pricing.ts`\n- `supabase/migrations/**`\n\n## Protected database functions\n- `is_admin`\n');
+  const xcard = (allowed) => fs.writeFileSync(path.join(XC, 'docs/TASK.md'), `# Current task\n\nStatus: ACTIVE\nType: BUILD\n\nTask:\n- Fix the header\n\nAllowed paths:\n${allowed.map((a) => `- ${a}`).join('\n')}\n\nTools needed:\n- none\n\nDone means:\n- [ ] works\n\nEvidence:\n\nReviewer verdict:\n- \n`);
+  const h = (hook, ti, name) => { const o = execSync(`node "${XC}/.claude/hooks/${hook}"`, { input: JSON.stringify({ cwd: XC, tool_name: name, tool_input: ti }), encoding: 'utf8' }); return o ? JSON.parse(o) : null; };
+  const e = (p) => decision(h('scope-guard.mjs', { file_path: path.join(XC, p) }, 'Edit')); const sh2 = (c) => decision(h('scope-guard.mjs', { command: c }, 'Bash')); const pp2 = (c) => decision(h('protected-paths.mjs', { command: c }, 'Bash'));
+  xcard(['src/pages/**']);
+  for (const p of ['claude.md', 'Claude.MD', 'CLAUDE.MD', 'protected.md', 'Protected.MD', '.CLAUDE/hooks/x.mjs', '.Claude/Settings.JSON', '.claude/HOOKS/common.mjs', 'SRC/LIB/PRICING.TS', 'Src/Lib/Pricing.ts', 'Supabase/Migrations/001.sql']) t(`case: editing ${p} -> deny`, e(p), 'deny');
+  t('case: an allowed folder written in another case is still allowed', e('SRC/PAGES/Home.tsx'), 'allow');
+  t('case: a shell redirect into claude.md -> deny', sh2('echo x > claude.md'), 'deny'); t('case: a shell redirect into .CLAUDE/hooks -> deny', sh2('echo x > .CLAUDE/hooks/a.mjs'), 'deny');
+  t('case: a shell write to SRC/LIB/PRICING.TS -> deny', pp2('echo x > SRC/LIB/PRICING.TS'), 'deny'); t('case: an interpreter naming SRC/LIB/PRICING.TS -> deny', pp2(`python3 -c "open('SRC/LIB/PRICING.TS','w').write('x')"`), 'deny');
+  t('case: SQL naming the protected function in capitals -> deny', decision(h('protected-paths.mjs', { sql: 'UPDATE public.IS_ADMIN SET x = 1 WHERE y = 2' }, 'mcp__Supabase__execute_sql')), 'deny');
+  xcard(['src/lib/Pricing.ts']); t('case: a card naming the file in another case still covers it', e('src/lib/pricing.ts'), 'allow');
+  fs.rmSync(XC, { recursive: true, force: true });
+  const { systemNote } = await import(`${SRC}/.claude/hooks/done-check.mjs`);
+  for (const bad of ['A background security review flagged the edit guard in the master system, so I added it to the list for that chat.', 'I need a decision on sending the three safety notes to your master-system chat.', 'Security review found a weakness in the hooks.']) t(`system notes: "${bad.slice(0, 40)}..." -> block`, !!systemNote(bad), true);
+  for (const ok of ['The delete button now works and the live page shows it.', 'A security check on the checkout page found nothing wrong.']) t(`system notes: fine: "${ok.slice(0, 40)}..."`, systemNote(ok), null);
+  t('stop check: a message about a safety note on the system is sent back', decision(stopS('The safety notes about the master system are on the list for that chat.', 'sn1')), 'block');
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

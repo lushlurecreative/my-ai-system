@@ -34,7 +34,7 @@ export function readGo(root) { try { const a = JSON.parse(fs.readFileSync(path.j
 // A standing go ("do it", "yes", "go", "all of them"): approves everything Shaun named or that was listed in the message he answered. Not used up by opening a task; it never lapses by time: it ends when Shaun says stop. Stored as "__goall__".
 export function readGoAll(root) { try { const a = JSON.parse(fs.readFileSync(path.join(root, '.claude/approvals.json'), 'utf8')); const now = Date.now(); return (Array.isArray(a) ? a : []).filter((x) => x && x.name === '__goall__'); } catch { return []; } }
 // The task card is the approval for protected files and areas. It counts only while it is ACTIVE (a commit or push may also use a DONE card), and only when the card names the protected file (or the protected entry) explicitly under Allowed paths; a broad pattern such as src/** does not count.
-export function cardCovers(root, values, statuses = ['ACTIVE']) { const t = readTask(root); if (!statuses.includes(t.status)) return false; return (t.allowed || []).some((a) => values.includes(a)); }
+export function cardCovers(root, values, statuses = ['ACTIVE']) { const t = readTask(root); if (!statuses.includes(t.status)) return false; const low = values.map((v) => String(v).toLowerCase()); return (t.allowed || []).some((a) => low.includes(String(a).toLowerCase())); }
 export function taskCardText(root) { let t = ''; try { t = fs.readFileSync(path.join(root, 'docs/TASK.md'), 'utf8'); } catch { return ''; } return t.split(/^Evidence:/m)[0]; }
 export const taskTitle = (root) => { const m = taskCardText(root).match(/^Task:\s*\n\s*-\s*(.+)$/m); return (m ? m[1] : '(untitled)').replace(/[\t\n]/g, ' ').slice(0, 120); };
 // An ACTIVE card that names the word or file counts as the approval for a connector message about it.
@@ -105,4 +105,4 @@ export function projectRoot(reportedCwd) {
   return start;
 }
 export function system(root) { try { return JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch { return {}; } }
-export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');
+export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$', 'i'); // case-insensitive: macOS and Windows file systems treat Claude.md and CLAUDE.md as the same file

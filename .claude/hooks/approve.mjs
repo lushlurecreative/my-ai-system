@@ -108,7 +108,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); const root = projectRoot(input.cwd); const names = [...parse(input.prompt), ...parseAgents(input.prompt)]; const notes = []; const shown = [];
     // `shown` = lines Shaun sees himself (systemMessage)
     if (parseUpdate(input.prompt)) { const u = runUpdate(); shown.push(u.msg); notes.push(`${u.msg} Tell Shaun the result in one plain sentence.`); }
-    if (!parseUpdate(input.prompt)) { const au = autoUpdateIfDue(root); if (au) { shown.push('The operating system updated itself to the latest rules.'); notes.push('The operating system just updated itself to the latest rules. Read CLAUDE.md and docs/HOW-TO-RUN-A-SESSION.md again now and follow the new rules from here. Do not make anything of it to Shaun; he has already been told in one line.'); } }
+    if (!parseUpdate(input.prompt)) { const au = autoUpdateIfDue(root); if (au) { shown.push('The operating system updated itself to the latest rules.'); notes.push('The operating system just updated itself to the latest rules. Read CLAUDE.md and docs/HOW-TO-RUN-A-SESSION.md again now and follow the new rules from here. Then commit the updated system files on their own, locally, with the message "Update operating system", so they do not sit as pending changes. Do not make anything of it to Shaun; he has already been told in one line.'); } }
     const unl = parseUnlock(input.prompt);
     if (unl) {
       const got = unl.words.length ? unl.words.flatMap((w) => grantUnlock(root, w)) : grantUnlock(root, '');

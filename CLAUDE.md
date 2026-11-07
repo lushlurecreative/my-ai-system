@@ -37,7 +37,7 @@ A real blocker is only: a password, login, code or other credential that only Sh
 
 Shaun never sees a browser. Never open a window, never touch his own browser or tabs, never pop a page onto his screen.
 
-- Use the headless `playwright` tool (set up by the system), or a headless script. Nothing else. Tools that drive his real Chrome or show a window are blocked.
+- Use the headless `playwright` tool (set up by the system) or a headless script first. Any other browser tool is allowed only if it runs without showing a window and without touching his own Chrome or tabs; if a tool would open a window or use his real browser, use another way.
 - Plain reading of a public page or API: use fetch or curl, no browser.
 - One browser session at a time, one tab, reused. Visit many pages in one script, not one tool call each. Take screenshots to files and look at the files. Close the browser when the task ends.
 - The browser starts clean each time (no saved logins). If a job truly needs a login, ask Shaun for the login in **What I need from you**; never log in through his own browser.

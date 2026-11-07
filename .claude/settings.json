@@ -44,15 +44,7 @@
       "Bash(git push --force*)",
       "Bash(git push -f*)",
       "Bash(rm -rf*)",
-      "Bash(git reset --hard*)",
-      "mcp__Claude_Browser__*",
-      "mcp__claude-in-chrome__*",
-      "mcp__Control_Chrome__*",
-      "mcp__plugin_browser-use_browser-use__*",
-      "mcp__chrome-devtools__*",
-      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__*",
-      "mcp__next-devtools__browser_eval",
-      "mcp__plugin_playwright_playwright__*"
+      "Bash(git reset --hard*)"
     ]
   },
   "hooks": {

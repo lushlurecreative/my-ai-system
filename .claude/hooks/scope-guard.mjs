@@ -3,7 +3,7 @@
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden, unlockHint } from './override.mjs';
-import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf } from './common.mjs';
+import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf, projectRoot } from './common.mjs';
 const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS|FIXED|ASKS)\.md$/, /^docs\/notes\//];
 export function checkEdit(root, filePath) {
   const ctx = {}; const res = checkEditCore(root, filePath, ctx);
@@ -120,7 +120,7 @@ export function checkBash(root, cmd) {
   return checkShellWrites(root, c);
 }
 export function check(input) {
-  const root = input?.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(); const name = String(input?.tool_name || ''); const ti = input?.tool_input || {};
+  const root = projectRoot(input?.cwd); const name = String(input?.tool_name || ''); const ti = input?.tool_input || {};
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) {
     if (rel(root, ti.file_path || '') === 'docs/TASK.md') { const g = gateActivation(root, [ti.new_string, ti.content, ...(Array.isArray(ti.edits) ? ti.edits.map((e) => e.new_string) : [])].filter(Boolean).join('\n')); if (g) return g; }
     return checkEdit(root, ti.file_path || ti.notebook_path);

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PreToolUse: the OTHER doors to a protected asset: shell writes, git commit/push of protected files, connector messages naming protected words, destructive SQL. DENY. Fails open.
 import fs from 'node:fs'; import { execFileSync } from 'node:child_process';
-import { lists } from './protected-list.mjs'; import { isOverridden, allowedDb, allowedWords, allowedMigrations, unlockHint, unlockHintMany, unlockHintOwner } from './override.mjs'; import { deny, globRe, discussionOn, quiet, cardCovers, cardMentions } from './common.mjs';
+import { lists } from './protected-list.mjs'; import { isOverridden, allowedDb, allowedWords, allowedMigrations, unlockHint, unlockHintMany, unlockHintOwner } from './override.mjs'; import { deny, globRe, discussionOn, quiet, cardCovers, cardMentions, projectRoot } from './common.mjs';
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const DESTRUCTIVE = /(?<![A-Za-z_])(delete\s+from|drop\s+(?:table|function|schema|policy|trigger|view|index|column)|truncate|alter\s+(?:table|function|policy|role)|grant|revoke|create\s+or\s+replace\s+function)(?![A-Za-z_])/i;
 const WRITES = [/\bsed\s+(?:\S+\s+)*?(?:-[a-zA-Z]*i\b|--in-place)/, /\bperl\s+-[a-zA-Z]*i/, /\btee\b/, /\bcp\b/, /\bmv\b/, /\brm\b/, /\bpatch\b/, /\bgit\s+(?:checkout|restore|apply|am|rm|mv|reset)\b/, />>?/];
@@ -31,7 +31,7 @@ export function gitFiles(cmd, cwd) {
   return out;
 }
 export function check(input) {
-  const name = String(input?.tool_name || ''); const ti = input?.tool_input || {}; const cwd = input?.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const name = String(input?.tool_name || ''); const ti = input?.tool_input || {}; const cwd = projectRoot(input?.cwd);
   const P = lists(cwd); const plain = P.files.filter((f) => !f.includes('*')); const prefixes = P.files.filter((f) => f.includes('*')).map((f) => f.split('*')[0]).filter((x) => x.length >= 4); const names = [...plain, ...plain.map((f) => f.split('/').pop())].filter(Boolean); const shellNames = [...names, ...prefixes];
   const isProt = (f) => P.files.some((g) => f === g || globRe(g).test(f));
   if (name === 'Bash') {

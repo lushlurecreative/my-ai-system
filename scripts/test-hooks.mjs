@@ -1,4 +1,5 @@
 // Proves the guards block what they must and allow what they must. Run: node scripts/test-hooks.mjs
+delete process.env.CLAUDE_PROJECT_DIR; // the project comes from each test's own input
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { execSync } from 'node:child_process';
 for (const f of fs.readdirSync(os.tmpdir())) if (/^ais-(stop|agents)-.*\.count$/.test(f)) fs.rmSync(path.join(os.tmpdir(), f), { force: true }); // leftover counters from an earlier run would skew results
 const SRC = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -666,6 +667,24 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   for (const ok of ['The change is done and the checks pass.', 'The delete button now works and the live page shows it.', 'I need a decision on the 3 pricing tiers.', 'Paste this:\n```\ngit log --oneline | head -3 # commit 3fa9c21\n```']) t(`noise numbers: fine: "${ok.slice(0, 40)}"`, noiseNumbers(ok), null);
   asUser('How many tests pass?'); t('noise numbers: fine when Shaun asked', noiseNumbers('664 tests pass.', tr), null); fs.rmSync(tr, { force: true });
   t('stop check: a report with a test count is sent back', decision(stopS('The change is done and 664 tests pass.', 'nn1')), 'block');
+}
+// ---- additions: the project folder never drifts with the working folder ----
+{
+  const DR = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-drift-')); execSync(`bash "${SRC}/install.sh" "${DR}"`, { stdio: 'ignore' });
+  fs.writeFileSync(path.join(DR, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/lib/pricing.ts`\n');
+  fs.mkdirSync(path.join(DR, 'src/pages'), { recursive: true }); fs.mkdirSync(path.join(DR, 'src/lib'), { recursive: true });
+  fs.writeFileSync(path.join(DR, 'docs/TASK.md'), '# Current task\n\nStatus: ACTIVE\nType: BUILD\n\nTask:\n- Fix the header\n\nAllowed paths:\n- src/pages/**\n\nTools needed:\n- none\n\nDone means:\n- [ ] works\n\nEvidence:\n\nReviewer verdict:\n- \n');
+  const dh = (hook, ti, name, cwd, env) => { const o = execSync(`node "${DR}/.claude/hooks/${hook}"`, { input: JSON.stringify({ cwd, tool_name: name, tool_input: ti }), encoding: 'utf8', env: { ...process.env, ...(env || {}) } }); return o ? JSON.parse(o) : null; };
+  const sub = path.join(DR, 'src/pages'); const away = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-away-'));
+  for (const [label, cwd, env] of [['at the project root', DR, null], ['after a cd into a subfolder', sub, null], ['with the trusted setting and a stray reported folder', away, { CLAUDE_PROJECT_DIR: DR }], ['with a bad trusted setting, from a subfolder', sub, { CLAUDE_PROJECT_DIR: path.join(os.tmpdir(), 'does-not-exist-xyz') }]]) {
+    t(`drift (${label}): an allowed file is allowed`, decision(dh('scope-guard.mjs', { file_path: path.join(DR, 'src/pages/Home.tsx') }, 'Edit', cwd, env)), 'allow');
+    t(`drift (${label}): an unrelated file is still outside the task`, decision(dh('scope-guard.mjs', { file_path: path.join(DR, 'src/other.ts') }, 'Edit', cwd, env)), 'deny');
+    t(`drift (${label}): the protected file is still protected`, decision(dh('scope-guard.mjs', { file_path: path.join(DR, 'src/lib/pricing.ts') }, 'Edit', cwd, env)), 'deny');
+    t(`drift (${label}): a system file is still hard-blocked`, decision(dh('scope-guard.mjs', { file_path: path.join(DR, 'CLAUDE.md') }, 'Edit', cwd, env)), 'deny');
+    t(`drift (${label}): a shell write to the protected file is still stopped`, decision(dh('protected-paths.mjs', { command: `echo x > ${path.join(DR, 'src/lib/pricing.ts')}` }, 'Bash', cwd, env)), 'deny');
+    t(`drift (${label}): a connector message naming the protected file is still stopped`, decision(dh('protected-paths.mjs', { message: 'Please change src/lib/pricing.ts' }, 'mcp__Lovable__send_message', cwd, env)), 'deny');
+  }
+  fs.rmSync(DR, { recursive: true, force: true }); fs.rmSync(away, { recursive: true, force: true });
 }
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // UserPromptSubmit: when Shaun types "yes, install X" (or "install: X") in chat, record the approval. The harness runs this only on HIS messages, so Claude cannot forge it.
 // scope-guard.mjs reads .claude/approvals.json. Approvals last 24 hours. Fails open (no approval) on any error.
-import fs from 'node:fs'; import path from 'node:path'; import { execFileSync } from 'node:child_process'; import { grantUnlock } from './override.mjs'; import { verNewer, masterPathOf, verifyMaster } from './common.mjs';
+import fs from 'node:fs'; import path from 'node:path'; import { execFileSync } from 'node:child_process'; import { grantUnlock } from './override.mjs'; import { verNewer, masterPathOf, verifyMaster, projectRoot } from './common.mjs';
 export function parse(prompt) {
   const p = String(prompt || '').trim(); if (!p || p.length > 300) return [];
   const m = p.match(/^\s*(?:yes|yep|yeah|ok|okay|approved?)\b[\s,.!:-]*install\s+(.+?)\s*[.!]?\s*$/i) || p.match(/^\s*install:\s*(.+?)\s*$/i);
@@ -95,7 +95,7 @@ export function record(root, names) {
 }
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
-    const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); const root = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(); const names = [...parse(input.prompt), ...parseAgents(input.prompt)]; const notes = []; const shown = [];
+    const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); const root = projectRoot(input.cwd); const names = [...parse(input.prompt), ...parseAgents(input.prompt)]; const notes = []; const shown = [];
     // `shown` = lines Shaun sees himself (systemMessage)
     if (parseUpdate(input.prompt)) { const u = runUpdate(); shown.push(u.msg); notes.push(`${u.msg} Tell Shaun the result in one plain sentence.`); }
     const unl = parseUnlock(input.prompt);

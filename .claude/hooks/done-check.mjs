@@ -2,7 +2,7 @@
 // Stop hook. (1) Ends by announcing work -> block (max 2 in a row per reason). (2) Claims done but TASK.md lacks Evidence or Reviewer PASS, or the reviewer agent never ran this session -> block once.
 // (1b) Asks permission to continue mid-task -> block. (1c) Claims done with unticked Done means, or an ANALYSIS with an open Scope ledger -> block. (3) TASK is DONE with a reviewer PASS: autopilot off needs a numbered list of every NEXT item that can start now plus "which numbers"; autopilot on needs the next task started, not a question. Fails open.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
-import { readTask, system, discussionOn, readGoAll } from './common.mjs';
+import { readTask, system, discussionOn, readGoAll, projectRoot } from './common.mjs';
 const NEEDS_SHAUN = /\bShaun(?:'s)?\b[^|]{0,60}\b(?:action|login|logins|decision|decides|decide|spend|approval|authoriz\w+|unlock|setup|set up|sign-in|only|led)\b|\bneeds? (?:Shaun|your)\b|\b(?:logins?|credentials?|rotate|spend|admin sign-in)\b|\bseparately authorized\b|\bparked\b|\byou(?:r|'ll|'d)?\b|\btype "yes|\bsay (?:when|anything)\b/i;
 export function startableItems(root) {
   let t = ''; try { t = fs.readFileSync(path.join(root, 'docs/NEXT.md'), 'utf8'); } catch { return []; }
@@ -154,7 +154,7 @@ export function judge(message, root, transcriptPath) {
 }
 function main() {
   let input = {}; try { input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch { return; }
-  const root = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(); const file = path.join(os.tmpdir(), `ais-stop-${String(input.session_id || 'x').replace(/[^\w-]/g, '')}.count`);
+  const root = projectRoot(input.cwd); const file = path.join(os.tmpdir(), `ais-stop-${String(input.session_id || 'x').replace(/[^\w-]/g, '')}.count`);
   const reason = judge(input.last_assistant_message, root, input.transcript_path);
   if (!reason) { try { fs.rmSync(file, { force: true }); } catch {} return; }
   // Count repeats of the SAME reason only; a new reason starts a new count, so one cap cannot be spent on an earlier, different block.

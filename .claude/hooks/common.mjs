@@ -96,5 +96,13 @@ export function verifyMaster(project, master, { sync = false } = {}) {
   } catch { return no('the master folder could not be checked'); }
   return { ok: true, master: M };
 }
+// Which project the checks apply to. The trusted environment setting comes first (Claude Code sets it to the folder the session started in); without it, the nearest parent of the reported folder that holds the system. A working folder that has drifted into a subfolder (a `cd`) never changes the project, so the protected list, the task card and the allowed paths are always the project's own.
+export function projectRoot(reportedCwd) {
+  const env = process.env.CLAUDE_PROJECT_DIR;
+  if (env) { try { if (fs.statSync(env).isDirectory()) return env; } catch { /* not usable: fall through */ } }
+  const start = path.resolve(reportedCwd || process.cwd()); let d = start;
+  for (let i = 0; i < 40; i++) { if (fs.existsSync(path.join(d, '.claude/settings.json')) && fs.existsSync(path.join(d, '.claude/hooks'))) return d; const up = path.dirname(d); if (up === d) break; d = up; }
+  return start;
+}
 export function system(root) { try { return JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch { return {}; } }
 export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');

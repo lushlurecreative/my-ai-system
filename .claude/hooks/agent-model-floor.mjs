@@ -2,7 +2,7 @@
 // PreToolUse for Agent/Task. The model comes from the helper's agent file (.claude/agents/<name>.md), not from whoever launches it.
 // (1) A listed agent runs on its assigned model; asking for a different one is denied. (2) An unlisted helper type gets Sonnet; Opus/Fable are denied unless system.json allowExpensiveHelpers. (3) Cap on helper runs per session (system.json maxHelpers, default 6). Fails open.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import crypto from 'node:crypto';
-import { deny, system } from './common.mjs';
+import { deny, system, projectRoot } from './common.mjs';
 const norm = (m) => { const s = String(m || '').toLowerCase(); return /haiku/.test(s) ? 'haiku' : /sonnet/.test(s) ? 'sonnet' : /opus/.test(s) ? 'opus' : /fable/.test(s) ? 'fable' : ''; };
 export function assignedModel(root, name) {
   if (!/^[\w-]+$/.test(name || '')) return '';
@@ -22,4 +22,4 @@ export function decide(input, root) {
   if (own || asked) return null;
   return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', updatedInput: { ...ti, model: 'sonnet' }, additionalContext: 'Helper model set to Sonnet (the default for an unlisted helper).' } };
 }
-if (import.meta.url === `file://${process.argv[1]}`) { try { const i = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); const r = decide(i, i.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd()); if (r) process.stdout.write(JSON.stringify(r)); } catch {} }
+if (import.meta.url === `file://${process.argv[1]}`) { try { const i = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); const r = decide(i, projectRoot(i.cwd)); if (r) process.stdout.write(JSON.stringify(r)); } catch {} }

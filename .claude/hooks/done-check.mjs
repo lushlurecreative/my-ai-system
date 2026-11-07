@@ -42,9 +42,28 @@ export function jargonHits(text) {
   return [...seen];
 }
 const ASKED_ABOUT_CODE = /\b(?:which|what) (?:files?|code|scripts?)\b|\bshow me (?:the )?(?:code|files?|diff)\b|\bthe code\b|\bwhich files?\b/i;
+// "What I need from you": anything waiting on Shaun goes in its own labeled section, each item explained so it makes sense cold. Not buried in a paragraph, never a bare label such as "decision on button colour".
+const ASK_HEADING = /^[ \t]*(?:#{1,4}[ \t]*)?\**[ \t]*(?:(?:what|things)[ \t]+(?:i|we)[ \t]+need[ \t]+from[ \t]+you|needs?[ \t]+from[ \t]+you|waiting[ \t]+on[ \t]+you)\b[^\n]*$/im;
+const ASK_SIGNAL = /\b(?:waiting (?:on|for) you|needs? your (?:decision|approval|ok|okay|yes|permission|input|go|sign-?off)|needs? (?:you|Shaun) to\b|awaiting your|(?:can'?t|cannot|won'?t|will not) [^.\n]{0,50}\buntil you\b|only you can\b|(?:a|your) decision (?:is )?(?:needed|required))/i;
+export function askSection(text) {
+  const m = ASK_HEADING.exec(text); if (!m) return null;
+  const startAt = m.index + m[0].length; const after = text.slice(startAt).split('\n'); const bullets = []; let started = false; let consumed = 0; let lastBullet = 0;
+  for (const l of after) { consumed += l.length + 1; const b = l.match(/^\s*(?:[-*•]|\d+[.)])\s+(.+)$/); if (b) { started = true; bullets.push(b[1]); lastBullet = consumed; continue; } if (started && l.trim() && !/^\s{2,}\S/.test(l)) break; }
+  return { heading: m[0], bullets, from: m.index, to: startAt + (started ? lastBullet : 0) };
+}
+export function askProblem(text) {
+  const sec = askSection(text); const outside = sec ? text.slice(0, sec.from) + ' ' + text.slice(sec.to) : text;
+  if (sec && ASK_SIGNAL.test(outside)) return 'Something that waits on Shaun is written outside your "What I need from you" section. Move it into the section as its own explained bullet and take it out of the paragraph. Shaun rarely reads the paragraphs.';
+  if (!sec) return ASK_SIGNAL.test(text) ? 'You are telling Shaun that something waits on him, inside a paragraph. He rarely reads whole paragraphs. Put everything you need from him in its own section titled "What I need from you", as a bullet list, and keep it out of the paragraphs. Each bullet must make sense to someone who has forgotten the whole chat: a plain title, where it came from and when ("On Nov 3 you said ..."), what is going on in one or two plain sentences, what you need (a decision with the choices, a yes, a login, money, or a step), and your recommendation. Take the facts from docs/ASKS.md and write them in.' : null;
+  if (!sec.bullets.length) return 'Your "What I need from you" section has no bullets. List each thing you need from Shaun as a bullet, or remove the section if nothing is needed.';
+  const bare = sec.bullets.filter((b) => { const plain = b.replace(/[*_`]/g, '').trim(); return plain.split(/\s+/).length < 14 || plain.length < 70; });
+  if (bare.length) return `A bullet in "What I need from you" is too short to understand cold ("${bare[0].replace(/[*_`]/g, '').slice(0, 60)}"). Shaun did not write it and may not remember it. Rewrite each bullet in plain words: what it is about, where it came from and when ("On Nov 3 you said ..." or "On Nov 5 the reviewer found ..."), what is going on, exactly what you need from him, and your recommendation. One short paragraph at most per bullet; take the facts from docs/ASKS.md.`;
+  return null;
+}
 export function judge(message, root, transcriptPath) {
   const text = String(message || '').replace(/[‘’]/g, "'").trim(); if (!text) return null;
   const jh = jargonHits(text); if (jh.length >= 3 && !(transcriptPath && ASKED_ABOUT_CODE.test(lastUserText(transcriptPath)))) return `Your reply talks in file names and system terms (${jh.slice(0, 4).join(', ')}). Shaun does not read those and does not edit files. Rewrite it in plain English: the problem in one sentence, what you recommend, the exact text to paste and where (inside a code block), and the one thing he must do. No reasons unless he asked. Any pasting goes in a chat box; never ask him to open or edit a file.`;
+  { const ap = askProblem(text); if (ap) return ap; }
   const last = text.slice(-700).split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || text.slice(-700);
   const spoken = last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ');
   if (PICK.some((r) => r.test(last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ')))) return 'Do not ask Shaun to pick an order, to say where to start, or whether you should start. He is the boss and has told you to carry on. Decide the order yourself (most customer-damaging first), do the work, and tell him afterwards what you found and fixed, in plain words. Ask him only for a password or login, money or a card, a physical step, or a real business decision.';

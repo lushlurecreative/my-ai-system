@@ -4,7 +4,7 @@ import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden, unlockHint } from './override.mjs';
 import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf } from './common.mjs';
-const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS|FIXED)\.md$/, /^docs\/notes\//];
+const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS|FIXED|ASKS)\.md$/, /^docs\/notes\//];
 export function checkEdit(root, filePath) {
   const ctx = {}; const res = checkEditCore(root, filePath, ctx);
   if (!res && ctx.viaCard) logProtectedEdit(root, rel(root, filePath));

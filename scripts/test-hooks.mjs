@@ -612,5 +612,29 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('settings: an installed project gets the same allow list', JSON.stringify(inst.permissions.allow) === JSON.stringify(st.permissions.allow), true);
   t('settings: a force push is still stopped by the hook', decision(bash('git push --force origin main')), 'deny'); t('settings: a plus-refspec force push is still stopped by the hook', decision(bash('git push origin +main')), 'deny');
 }
+// ---- additions: "What I need from you" section ----
+{
+  const { askProblem, askSection } = await import(`${SRC}/.claude/hooks/done-check.mjs`);
+  const good = 'I fixed the delete button.\n\n**What I need from you**\n- **Decision: the colour of the Calculate button.** On Nov 3 you said the Calculate button on the home page is red and should be blue. I have not changed it yet because it is the main button. Should I make it blue? I recommend yes, because blue matches the rest of the page.\n- **Your yes: sending the sample sites to five businesses.** On Nov 5 we added five new sample sites to the list. Sending means messaging five real businesses, so I will not do it without your yes. I recommend you look at the five names first.';
+  t('asks: a clear section with two explained bullets -> fine', askProblem(good), null);
+  t('asks: no ask at all -> fine', askProblem('I fixed the delete button and checked it on the live site.'), null);
+  t('asks: the section is found', askSection(good).bullets.length, 2);
+  for (const [label, msg] of [['waiting on you inside a paragraph', 'I fixed the delete button. The sample-site sending is waiting on you, and I need your decision on the button colour before I go further.'], ['"I can\'t do this until you"', 'I fixed the delete button, but I can\'t finish the payment test until you give me a card.'], ['"only you can"', 'The wording pass is done. Only you can do the phone walkthrough.']]) t(`asks: ${label} -> block`, !!askProblem(msg), true);
+  t('asks: a bare label bullet -> block', !!askProblem('Done.\n\n**What I need from you**\n- Decision on button colour\n- Launch language'), true);
+  t('asks: a short bullet with no context -> block', !!askProblem('Done.\n\n**What I need from you**\n- Decision: should the button be blue? I recommend yes.'), true);
+  t('asks: an empty section -> block', !!askProblem('Done.\n\n**What I need from you**\n\nNothing yet.'), true);
+  t('asks: "Things I need from you" is also accepted', askProblem(good.replace('What I need from you', 'Things I need from you')), null);
+  t('asks: "needs your decision" in the section is fine, outside it is not', !!askProblem(good + '\n\nThe reviewer needs your decision too.'), true);
+  fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ autopilot: false, maxHelpers: 6 })); task('NONE', [], [], '');
+  t('asks: the stop check blocks a buried ask', decision(stopS('I fixed the delete button. It is waiting on you for the colour decision.', 'as1')), 'block');
+  t('asks: the stop check lets a proper section through', decision(stopS(good, 'as2')), 'allow');
+  fs.writeFileSync(dflag, JSON.stringify({ ts: Date.now() })); t('asks: also applies in discussion mode', decision(stopS('The sending is waiting on you.', 'as3')), 'block'); fs.rmSync(dflag, { force: true });
+  const AK = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-asks-')); execSync(`bash "${SRC}/install.sh" "${AK}"`, { stdio: 'ignore' });
+  t('asks: install creates docs/ASKS.md', fs.existsSync(path.join(AK, 'docs/ASKS.md')), true);
+  fs.writeFileSync(path.join(AK, 'docs/ASKS.md'), '# Asks\n\n## Open\n- **Button colour.** On Nov 3 you said blue.\n'); execSync(`bash "${SRC}/install.sh" "${AK}"`, { stdio: 'ignore' }); t('asks: an update keeps the project\'s own ASKS.md', fs.readFileSync(path.join(AK, 'docs/ASKS.md'), 'utf8').includes('On Nov 3 you said blue'), true);
+  t('asks: Claude may write docs/ASKS.md with no task open', (fs.writeFileSync(path.join(AK, 'docs/TASK.md'), '# Current task\n\nStatus: NONE\n'), decision(JSON.parse(execSync(`node "${AK}/.claude/hooks/scope-guard.mjs"`, { input: JSON.stringify({ cwd: AK, tool_name: 'Edit', tool_input: { file_path: path.join(AK, 'docs/ASKS.md') } }), encoding: 'utf8' }) || 'null'))), 'allow');
+  t('asks: the startup shows the record', /Button colour/.test(execSync(`node "${AK}/.claude/hooks/session-start.mjs"`, { input: JSON.stringify({ source: 'startup' }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: AK, AIS_NO_AUTOUPDATE: '1' } })), true);
+  fs.rmSync(AK, { recursive: true, force: true });
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

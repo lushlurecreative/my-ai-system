@@ -467,7 +467,7 @@ const ru = upd('yes, update'); t('update: "yes, update" installs the newer versi
 t('update: Shaun sees what happened, with both versions', new RegExp(`updated from ${v0.replace(/\./g, '\\.')} to 2099-01-01\\.1`).test(ru.systemMessage || ''), true);
 t('update: the project\'s own rulings, protected list and settings are kept', fs.readFileSync(path.join(P, 'docs/RULINGS.md'), 'utf8').includes('keep this line') && fs.readFileSync(path.join(P, 'PROTECTED.md'), 'utf8').includes('src/keep.ts') && JSON.parse(fs.readFileSync(path.join(P, '.claude/system.json'), 'utf8')).autopilot === true, true);
 t('update: asking again says it is already on the latest version', /already on the latest/.test(upd('yes, update').systemMessage || ''), true);
-bump('2099-01-01.2'); t('update: the next fresh chat reports the newer one', hasNotice(startAuto('startup')), true);
+sysJson({}); bump('2099-01-01.2'); t('update: the next fresh chat reports the newer one', hasNotice(startAuto('startup')), true);
 upd('Yes, update the system.'); t('update: "Yes, update the system." also works', pver(), '2099-01-01.2');
 fs.writeFileSync(path.join(P, '.claude/system-version'), '2999-01-01.1\n'); t('update: never offers an older version', hasNotice(startAuto('startup')), false); t('update: "yes, update" never goes back to an older version', (upd('yes, update'), pver()), '2999-01-01.1');
 // refusals: the update stops, nothing is installed, nothing falls back to "use what is there"
@@ -489,6 +489,18 @@ fs.writeFileSync(path.join(M, 'extra.txt'), 'x'); sh('git config user.email t@t 
 sh(`git remote set-url origin "${path.join(AU, 'gone.git')}"`, M); withMaster(M, (ru) => refused('the remote cannot be reached, so no fallback to what is there', ru)); sh(`git remote set-url origin "${B}"`, M);
 fs.writeFileSync(path.join(M, '.DS_Store'), 'x'); const okDs = upd('yes, update'); fs.rmSync(path.join(M, '.DS_Store')); t('update: a stray .DS_Store alone does not stop the update', pver() !== vOld, true);
 t('update: notice is not offered when the master folder is in a temp folder', (() => { const T2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-tmpmaster-')); sh(`git clone -q "${B}" "${T2}/m"`, AU); fs.writeFileSync(path.join(P, '.claude/system-version'), '2026-01-01.1\n'); sysJson({ masterPath: path.join(T2, 'm') }); const r = hasNotice(startAuto('startup')); sysJson({}); fs.rmSync(T2, { recursive: true, force: true }); return r; })(), false);
+// self-update on an ordinary message (Shaun's standing choice)
+{
+  const old = '2026-01-01.1'; const reset = () => { fs.writeFileSync(path.join(P, '.claude/system-version'), old + '\n'); fs.rmSync(path.join(P, '.claude/update-check.json'), { force: true }); };
+  sysJson({ selfUpdate: true }); reset(); const r1 = updEnv(P, P, 'hello there');
+  t('self-update: an ordinary message pulls and installs a newer version', pver() !== old, true); t('self-update: Shaun is told in one line', /updated itself/.test(r1.systemMessage || ''), true); t('self-update: Claude is told to re-read the rules', /Read CLAUDE\.md/.test(r1.hookSpecificOutput.additionalContext), true);
+  fs.writeFileSync(path.join(P, '.claude/system-version'), old + '\n'); updEnv(P, P, 'hello again'); t('self-update: it does not check again within 30 minutes', pver(), old);
+  fs.writeFileSync(path.join(P, '.claude/update-check.json'), JSON.stringify({ ts: Date.now() - 31 * 60 * 1000 })); updEnv(P, P, 'hello again'); t('self-update: after 30 minutes it checks again', pver() !== old, true);
+  sysJson({ selfUpdate: false }); reset(); updEnv(P, P, 'hello'); t('self-update: off when selfUpdate is false', pver(), old);
+  sysJson({}); reset(); updEnv(P, P, 'hello'); t('self-update: off when the setting is absent', pver(), old);
+  sysJson({ selfUpdate: true }); reset(); fs.appendFileSync(path.join(M, 'README.md'), '\nlocal edit\n'); const rd = updEnv(P, P, 'hello'); t('self-update: a changed master folder stops it quietly', pver() === old && !rd.systemMessage, true); sh('git checkout -q -- README.md', M);
+  reset(); t('self-update: the session start shows no "type yes, update" notice when it updates itself', hasNotice(startAuto('startup')), false);
+}
 fs.rmSync(AU, { recursive: true, force: true });
 }
 // quoted text after a flag ending in m is dropped only for git commit / tag / merge

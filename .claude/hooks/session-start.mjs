@@ -10,7 +10,7 @@ const updateCheck = () => {
   try {
     if (process.env.AIS_NO_AUTOUPDATE === '1' || !['startup', 'clear'].includes(String(input.source || 'startup'))) return null;
     let sys = {}; try { sys = JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch {}
-    if (sys.checkForUpdates === false) return null;
+    if (sys.checkForUpdates === false || sys.selfUpdate === true) return null;
     const master = masterPathOf(root);
     if (!verifyMaster(process.env.CLAUDE_PROJECT_DIR || root, master).ok) return null;
     try { execFileSync('git', ['-C', master, 'fetch', '-q'], { timeout: 12000, stdio: 'ignore' }); } catch { /* offline: compare with what is there */ }

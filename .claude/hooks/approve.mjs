@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // UserPromptSubmit: when Shaun types "yes, install X" (or "install: X") in chat, record the approval. The harness runs this only on HIS messages, so Claude cannot forge it.
 // scope-guard.mjs reads .claude/approvals.json. Approvals last 24 hours. Fails open (no approval) on any error.
-import fs from 'node:fs'; import path from 'node:path'; import { execFileSync } from 'node:child_process'; import { grantUnlock } from './override.mjs'; import { verNewer, masterPathOf, verifyMaster, projectRoot } from './common.mjs';
+import fs from 'node:fs'; import path from 'node:path'; import { execFileSync } from 'node:child_process'; import { grantUnlock } from './override.mjs'; import { verNewer, masterPathOf, verifyMaster, projectRoot, system } from './common.mjs';
 export function parse(prompt) {
   const p = String(prompt || '').trim(); if (!p || p.length > 300) return [];
   const m = p.match(/^\s*(?:yes|yep|yeah|ok|okay|approved?)\b[\s,.!:-]*install\s+(.+?)\s*[.!]?\s*$/i) || p.match(/^\s*install:\s*(.+?)\s*$/i);
@@ -87,6 +87,16 @@ export function permissionAnywhere(prompt) {
   }
   return false;
 }
+// Self-update (Shaun's standing choice, switched on with selfUpdate:true in system.json): at most once every 30 minutes, on one of his messages, pull the master and install a newer version, with every check the typed update has (a real, clean, synced git copy outside the project and temp folders). He is told in one line; a failure changes nothing and says nothing.
+export function autoUpdateIfDue(project) {
+  try {
+    const sys = system(project); if (sys.selfUpdate !== true || sys.checkForUpdates === false) return null;
+    const f = path.join(project, '.claude/update-check.json'); let last = 0; try { last = Number(JSON.parse(fs.readFileSync(f, 'utf8')).ts) || 0; } catch {}
+    if (Date.now() - last < 30 * 60 * 1000) return null;
+    fs.writeFileSync(f, JSON.stringify({ ts: Date.now() }));
+    const u = runUpdate(); return u.ok && /was updated from/.test(u.msg) ? u : null;
+  } catch { return null; }
+}
 export function record(root, names) {
   const f = path.join(root, '.claude/approvals.json'); let cur = []; try { cur = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
   const now = Date.now(); const keep = (Array.isArray(cur) ? cur : []).filter((x) => x && (x.name === '__go__' || x.name === '__goall__' || now - Number(x.ts) < 24 * 3600 * 1000) && !(names.includes('__go__') && x.name === '__go__') && !(names.includes('__goall__') && x.name === '__goall__'));
@@ -98,6 +108,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); const root = projectRoot(input.cwd); const names = [...parse(input.prompt), ...parseAgents(input.prompt)]; const notes = []; const shown = [];
     // `shown` = lines Shaun sees himself (systemMessage)
     if (parseUpdate(input.prompt)) { const u = runUpdate(); shown.push(u.msg); notes.push(`${u.msg} Tell Shaun the result in one plain sentence.`); }
+    if (!parseUpdate(input.prompt)) { const au = autoUpdateIfDue(root); if (au) { shown.push('The operating system updated itself to the latest rules.'); notes.push('The operating system just updated itself to the latest rules. Read CLAUDE.md and docs/HOW-TO-RUN-A-SESSION.md again now and follow the new rules from here. Do not make anything of it to Shaun; he has already been told in one line.'); } }
     const unl = parseUnlock(input.prompt);
     if (unl) {
       const got = unl.words.length ? unl.words.flatMap((w) => grantUnlock(root, w)) : grantUnlock(root, '');

@@ -710,5 +710,11 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('install: the block names the package that is not approved', /evil-pkg/.test(JSON.stringify(bash('npm install lodash evil-pkg'))), true);
   fs.rmSync(apf, { force: true });
 }
+{
+  const { referBack } = await import(`${SRC}/.claude/hooks/done-check.mjs`);
+  for (const bad of ['Say the word box and I will resend it.', 'Paste the same box into both chats.', 'Use the earlier text again for the other chat.', 'I will resend it whenever you want.']) t(`refer back: "${bad.slice(0, 40)}" -> block`, !!referBack(bad), true);
+  t('refer back: fine when the full text is in the message', referBack('Paste the same box into both chats:\n```\nUpdate this project.\n```'), null); t('refer back: ordinary text is fine', referBack('The delete button now works and the live page shows it.'), null);
+  t('stop check: pointing back at earlier text is sent back', decision(stopS('Paste the same box into both chats.', 'rb1')), 'block');
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

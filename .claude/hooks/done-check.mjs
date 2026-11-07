@@ -102,6 +102,14 @@ export function statusOnly(text, transcriptPath) {
   const words = body.split(/\s+/).filter(Boolean).length; const last = body.split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || body;
   return words <= 120 || STATUS.test(last) ? 'This is a status message, and Shaun wants none. Do not report that you are waiting, watching, checking or that something is under review or not live yet. Keep working silently: if you are waiting for something outside your control (a publish, a build), wait with a command that checks every 30 seconds for up to 10 minutes and do other work from the list meanwhile. Report only a result, good or bad. If it truly is not live after 10 minutes, say that once as a result ("not live after 10 minutes").' : null;
 }
+// Pointing back at earlier text instead of including it ("the same box", "paste the earlier text", "I'll resend it"). Shaun does not scroll back; anything he must paste or read is in the message itself.
+const REFER_BACK = /\b(?:the|that|same|earlier|previous|above|last) (?:update |paste |copy-?paste )?(?:box|text|prompt|block|message|one)\b[^.\n]{0,40}\b(?:paste|use|send|resend|again|before|earlier)\b|\b(?:paste|use|send) (?:the )?(?:same|earlier|previous|above|last)\b|\bresend it\b|\bsay (?:the word|box)\b/i;
+export function referBack(text) {
+  const body = String(text || '').replace(/```[\s\S]*?```/g, ' ');
+  if (!REFER_BACK.test(body)) return null;
+  if (/```/.test(String(text))) return null; // the full text is in this message
+  return 'You point Shaun back at earlier text ("the same box", "the earlier text", "I\'ll resend it"). He does not scroll back. Put the full text he must paste in this message, in a code block, with Do this and Where.';
+}
 // Counts, hashes and version numbers: not his business. "664 tests pass", "passed 64 of 64", "commit 3fa9c21", "version 2026-11-07.2".
 const NOISE_NUMBERS = /\b\d+(?:\s+of\s+\d+)?\s+(?:tests?|checks?|test files|assertions)\s+(?:pass(?:ed|es)?|ran|run|green)\b|\bpassed\s+\d+\s+of\s+\d+\b|\ball\s+\d+\s+(?:tests?|checks?)\b|\bcommit\s+[0-9a-f]{7,40}\b|\bversion\s+\d{4}-\d{2}-\d{2}(?:\.\d+)?\b|\b(?:sha|hash)\s+[0-9a-f]{7,40}\b/i;
 const ASKED_COUNTS = /\b(?:how many|which version|what version|test count|commit|hash|sha)\b/i;
@@ -123,6 +131,7 @@ export function judge(message, root, transcriptPath) {
   { const ap = askProblem(text, transcriptPath); if (ap) return ap; }
   { const so = statusOnly(text, transcriptPath); if (so) return so; }
   { const nn = noiseNumbers(text, transcriptPath); if (nn) return nn; }
+  { const rb = referBack(text); if (rb) return rb; }
   { const tl = tooLong(text, transcriptPath, root); if (tl) return tl; }
   const last = text.slice(-700).split(/\n\s*\n/).filter((p) => /[a-z]/i.test(p)).pop() || text.slice(-700);
   const spoken = last.replace(/"[^"\n]*"|`[^`\n]*`/g, ' ');

@@ -747,5 +747,19 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('symlink: still denied after a cd into a subfolder', decision(sg('Edit', { file_path: path.join(SL, 'src/pages/to-claude.ts') }, path.join(SL, 'src/pages'))), 'deny');
   fs.rmSync(SL, { recursive: true, force: true }); fs.rmSync(OUT, { recursive: true, force: true });
 }
+// ---- additions: an interpreter or write call naming a protected path counts as a write ----
+{
+  const XP = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-exec-')); execSync(`bash "${SRC}/install.sh" "${XP}"`, { stdio: 'ignore' });
+  fs.writeFileSync(path.join(XP, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/lib/pricing.ts`\n');
+  const xcard = (status, allowed) => fs.writeFileSync(path.join(XP, 'docs/TASK.md'), `# Current task\n\nStatus: ${status}\nType: BUILD\n\nTask:\n- Change pricing\n\nAllowed paths:\n${allowed.map((a) => `- ${a}`).join('\n')}\n\nTools needed:\n- none\n\nDone means:\n- [ ] works\n\nEvidence:\n\nReviewer verdict:\n- \n`);
+  const xs = (c) => decision(JSON.parse(execSync(`node "${XP}/.claude/hooks/protected-paths.mjs"`, { input: JSON.stringify({ cwd: XP, tool_name: 'Bash', tool_input: { command: c } }), encoding: 'utf8' }) || 'null'));
+  xcard('ACTIVE', ['src/pages/**']);
+  for (const c of [`python3 -c "open('src/lib/pricing.ts','w').write('x')"`, `python3 - <<'EOF'\nfrom pathlib import Path\nPath('src/lib/pricing.ts').write_text('x')\nEOF`, `node -e "require('fs').writeFileSync('src/lib/pricing.ts','x')"`, `ruby -e 'File.write("src/lib/pricing.ts","x")'`, `perl -e 'open(F,">src/lib/pricing.ts"); print F "x"'`, `awk 'BEGIN{print "x" > "src/lib/pricing.ts"}'`, 'dd if=/tmp/a of=src/lib/pricing.ts', 'ln -sf /tmp/a src/lib/pricing.ts', 'truncate -s 0 src/lib/pricing.ts', 'install -m 644 /tmp/a src/lib/pricing.ts', 'rsync /tmp/a src/lib/pricing.ts', 'touch src/lib/pricing.ts', 'chmod 777 src/lib/pricing.ts', 'find . -name pricing.ts | xargs sh -c "echo x > src/lib/pricing.ts"', `php -r 'file_put_contents("src/lib/pricing.ts","x");'`, `deno eval "Deno.writeTextFileSync('src/lib/pricing.ts','x')"`]) t(`exec write: ${c.split('\n')[0].slice(0, 46)} -> deny`, xs(c), 'deny');
+  for (const c of ['cat src/lib/pricing.ts', 'grep -n price src/lib/pricing.ts', 'head -20 src/lib/pricing.ts', 'ls -l src/lib/pricing.ts', 'wc -l src/lib/pricing.ts', 'git diff src/lib/pricing.ts', 'git log --oneline -- src/lib/pricing.ts', 'diff src/lib/pricing.ts /tmp/a']) t(`exec write: a read is fine: ${c.slice(0, 40)}`, xs(c), 'allow');
+  t('exec write: an interpreter that does not name the protected path is fine', xs(`python3 -c "print(1)"`), 'allow');
+  xcard('ACTIVE', ['src/lib/pricing.ts']); t('exec write: allowed when the active card names the file', xs(`python3 -c "open('src/lib/pricing.ts','w').write('x')"`), 'allow');
+  xcard('DONE', ['src/lib/pricing.ts']); t('exec write: not allowed once the card is DONE', xs(`python3 -c "open('src/lib/pricing.ts','w').write('x')"`), 'deny');
+  fs.rmSync(XP, { recursive: true, force: true });
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

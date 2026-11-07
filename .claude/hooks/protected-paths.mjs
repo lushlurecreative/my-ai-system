@@ -4,7 +4,10 @@ import fs from 'node:fs'; import { execFileSync } from 'node:child_process';
 import { lists } from './protected-list.mjs'; import { isOverridden, allowedDb, allowedWords, allowedMigrations, unlockHint, unlockHintMany, unlockHintOwner } from './override.mjs'; import { deny, globRe, discussionOn, quiet, cardCovers, cardMentions, projectRoot } from './common.mjs';
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const DESTRUCTIVE = /(?<![A-Za-z_])(delete\s+from|drop\s+(?:table|function|schema|policy|trigger|view|index|column)|truncate|alter\s+(?:table|function|policy|role)|grant|revoke|create\s+or\s+replace\s+function)(?![A-Za-z_])/i;
-const WRITES = [/\bsed\s+(?:\S+\s+)*?(?:-[a-zA-Z]*i\b|--in-place)/, /\bperl\s+-[a-zA-Z]*i/, /\btee\b/, /\bcp\b/, /\bmv\b/, /\brm\b/, /\bpatch\b/, /\bgit\s+(?:checkout|restore|apply|am|rm|mv|reset)\b/, />>?/];
+// Any interpreter or exec-capable tool can write a file in a way a pattern cannot see, so a command that names a protected path AND runs one is treated as a write unless the task card covers that path. The same goes for the write calls of common languages.
+const EXEC_BIN = /\b(?:python[0-9.]*|pypy3?|node|nodejs|deno|bun|bunx|ruby|irb|perl|php|lua|awk|gawk|mawk|dd|install|ln|truncate|rsync|touch|chmod|chown|ed|ex|vim?|nano|emacs|tar|unzip|zip|sh|bash|zsh|dash|ksh|eval|source|xargs|find|curl|wget|npx|make)\b/;
+const WRITE_API = /\b(?:writeFile\w*|appendFile\w*|createWriteStream|copyFile\w*|rename\w*|unlink\w*|rmSync|write_text|write_bytes|shutil\.(?:copy\w*|move)|os\.(?:rename|replace|remove|unlink)|File\.(?:write|open)|FileUtils\.\w+|file_put_contents|fopen)\b|\bopen\([^)]*['"][wa+]/;
+const WRITES = [/\bsed\s+(?:\S+\s+)*?(?:-[a-zA-Z]*i\b|--in-place)/, /\bperl\s+-[a-zA-Z]*i/, /\btee\b/, /\bcp\b/, /\bmv\b/, /\brm\b/, /\bpatch\b/, /\bgit\s+(?:checkout|restore|apply|am|rm|mv|reset)\b/, />>?/, EXEC_BIN, WRITE_API];
 const gitv = (args, cwd) => { try { return execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'ignore'], timeout: 4000 }).toString().split('\n').map((x) => x.trim()).filter(Boolean); } catch { return []; } };
 // Only the files this command will actually commit or push. Untracked folders that nothing stages are never looked at.
 const tokens = (seg) => (seg.match(/"[^"]*"|'[^']*'|\S+/g) || []).map((t) => t.replace(/^["']|["']$/g, ''));

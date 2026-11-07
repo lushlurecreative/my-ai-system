@@ -716,5 +716,24 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('refer back: fine when the full text is in the message', referBack('Paste the same box into both chats:\n```\nUpdate this project.\n```'), null); t('refer back: ordinary text is fine', referBack('The delete button now works and the live page shows it.'), null);
   t('stop check: pointing back at earlier text is sent back', decision(stopS('Paste the same box into both chats.', 'rb1')), 'block');
 }
+// ---- additions: a shortcut (symlink) cannot carry an edit past the guard ----
+{
+  const SL = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-sym-')); execSync(`bash "${SRC}/install.sh" "${SL}"`, { stdio: 'ignore' });
+  fs.writeFileSync(path.join(SL, 'PROTECTED.md'), '# P\n\n## Protected files\n- `src/lib/pricing.ts`\n');
+  fs.mkdirSync(path.join(SL, 'src/pages'), { recursive: true }); fs.mkdirSync(path.join(SL, 'src/lib'), { recursive: true });
+  fs.writeFileSync(path.join(SL, 'src/lib/pricing.ts'), 'a'); fs.writeFileSync(path.join(SL, 'src/pages/okay.ts'), 'a');
+  const OUT = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-outside-')); fs.writeFileSync(path.join(OUT, 'secret.txt'), 'x');
+  const link = (name, target) => fs.symlinkSync(target, path.join(SL, 'src/pages', name));
+  link('to-protected.ts', '../lib/pricing.ts'); link('to-claude.ts', '../../CLAUDE.md'); link('to-protected-list.ts', '../../PROTECTED.md'); link('to-hook.ts', '../../.claude/hooks/common.mjs'); link('to-outside.ts', path.join(OUT, 'secret.txt')); link('alias.ts', 'okay.ts');
+  link('libdir', '../lib'); link('hooksdir', '../../.claude/hooks'); link('outdir', OUT);
+  fs.writeFileSync(path.join(SL, 'docs/TASK.md'), '# Current task\n\nStatus: ACTIVE\nType: BUILD\n\nTask:\n- Fix the header\n\nAllowed paths:\n- src/pages/**\n\nTools needed:\n- none\n\nDone means:\n- [ ] works\n\nEvidence:\n\nReviewer verdict:\n- \n');
+  const sg = (tool, ti, cwd = SL) => { const o = execSync(`node "${SL}/.claude/hooks/scope-guard.mjs"`, { input: JSON.stringify({ cwd, tool_name: tool, tool_input: ti }), encoding: 'utf8' }); return o ? JSON.parse(o) : null; };
+  const ed = (p) => decision(sg('Edit', { file_path: path.join(SL, p) }));
+  t('symlink: a normal allowed file -> allow', ed('src/pages/okay.ts'), 'allow'); t('symlink: a shortcut to an allowed file -> allow', ed('src/pages/alias.ts'), 'allow');
+  for (const [label, p] of [['a protected file', 'src/pages/to-protected.ts'], ['CLAUDE.md', 'src/pages/to-claude.ts'], ['PROTECTED.md', 'src/pages/to-protected-list.ts'], ['a hook file', 'src/pages/to-hook.ts'], ['a file outside the project', 'src/pages/to-outside.ts'], ['a protected file through a folder shortcut', 'src/pages/libdir/pricing.ts'], ['a new file in the hooks folder through a folder shortcut', 'src/pages/hooksdir/new.mjs'], ['a file outside the project through a folder shortcut', 'src/pages/outdir/secret.txt']]) t(`symlink: a shortcut to ${label} -> deny`, ed(p), 'deny');
+  t('symlink: a shell write through a shortcut to a hook file -> deny', decision(sg('Bash', { command: 'echo x > src/pages/to-hook.ts' })), 'deny'); t('symlink: a shell write through a shortcut to an allowed file -> allow', decision(sg('Bash', { command: 'echo x > src/pages/alias.ts' })), 'allow');
+  t('symlink: still denied after a cd into a subfolder', decision(sg('Edit', { file_path: path.join(SL, 'src/pages/to-claude.ts') }, path.join(SL, 'src/pages'))), 'deny');
+  fs.rmSync(SL, { recursive: true, force: true }); fs.rmSync(OUT, { recursive: true, force: true });
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

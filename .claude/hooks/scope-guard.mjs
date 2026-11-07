@@ -5,8 +5,11 @@ import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden, unlockHint } from './override.mjs';
 import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf, projectRoot } from './common.mjs';
 const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS|FIXED|ASKS)\.md$/, /^docs\/notes\//];
+// A shortcut (symlink) in the project can point at a protected file, a system file or a folder outside the project. The check runs on the path as given AND on where it really lands; either one failing refuses the edit.
+const realOf = (p) => { try { return fs.realpathSync(p); } catch { try { return path.join(fs.realpathSync(path.dirname(p)), path.basename(p)); } catch { return null; } } };
 export function checkEdit(root, filePath) {
-  const ctx = {}; const res = checkEditCore(root, filePath, ctx);
+  const ctx = {}; let res = checkEditCore(root, filePath, ctx);
+  if (!res) { const abs = path.resolve(root, String(filePath || '')); const real = realOf(abs); const rr = realOf(root); if (real && rr && real !== abs) res = checkEditCore(rr, real, ctx); }
   if (!res && ctx.viaCard) logProtectedEdit(root, rel(root, filePath));
   return res;
 }

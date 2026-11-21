@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Stop hook. (1) Ends by announcing work -> block (max 2 in a row per reason). (2) Claims done but TASK.md lacks Evidence or Reviewer PASS, or the reviewer agent never ran this session -> block once.
 // (1b) Asks permission to continue mid-task -> block. (1c) Claims done with unticked Done means, or an ANALYSIS with an open Scope ledger -> block. (3) TASK is DONE with a reviewer PASS: autopilot off needs a numbered list of every NEXT item that can start now plus "which numbers"; autopilot on needs the next task started, not a question. Fails open.
-import fs from 'node:fs'; import crypto from 'node:crypto'; import { designGate } from './design-gate.mjs'; import { verdictOk, reviewNeeded, tickClock, readClock, writeClock } from './common.mjs'; import os from 'node:os'; import path from 'node:path';
+import fs from 'node:fs'; import crypto from 'node:crypto'; import { designGate } from './design-gate.mjs'; import { verdictOk, reviewNeeded, tickClock, readClock, writeClock, transcriptLines } from './common.mjs'; import os from 'node:os'; import path from 'node:path';
 import { readTask, system, discussionOn, readGoAll, projectRoot, taskTitle } from './common.mjs';
 const NEEDS_SHAUN = /\bShaun(?:'s)?\b[^|]{0,60}\b(?:action|login|logins|decision|decides|decide|spend|approval|authoriz\w+|unlock|setup|set up|sign-in|only|led)\b|\bneeds? (?:Shaun|your)\b|\b(?:logins?|credentials?|rotate|spend|admin sign-in)\b|\bseparately authorized\b|\bparked\b|\byou(?:r|'ll|'d)?\b|\btype "yes|\bsay (?:when|anything)\b/i;
 export function startableItems(root) {
@@ -10,7 +10,7 @@ export function startableItems(root) {
   return [...body.matchAll(/^\s*\d+\.\s+(.+)$/gm)].map((m) => m[1]).filter((x) => !/^\(/.test(x) && !NEEDS_SHAUN.test(x));
 }
 export function lastUserText(transcriptPath) {
-  try { const ls = fs.readFileSync(transcriptPath, 'utf8').split('\n').filter(Boolean); for (let i = ls.length - 1; i >= 0; i--) { try { const d = JSON.parse(ls[i]); if (d.type !== 'user' || d.message?.role !== 'user') continue; const c = d.message.content; const txt = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b.type === 'text').map((b) => b.text).join('\n') : ''; if (txt.trim()) return txt.trim(); } catch {} } } catch {}
+  try { const ls = transcriptLines(transcriptPath, ['"type":"user"'], 16 * 1024 * 1024); for (let i = ls.length - 1; i >= 0; i--) { try { const d = JSON.parse(ls[i]); if (d.type !== 'user' || d.message?.role !== 'user') continue; const c = d.message.content; const txt = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b.type === 'text').map((b) => b.text).join('\n') : ''; if (txt.trim()) return txt.trim(); } catch {} } } catch {}
   return '';
 }
 // A question from Shaun is answered, not turned into new work or a forced list.
@@ -32,7 +32,7 @@ const OFFLOAD = [
 const REAL_BLOCKER = /\b(?:password|passcode|login|log in|log-in|sign in|sign-in|signed in|credentials?|2fa|two-factor|verification code|otp|token|secret|api key|payment|card|billing|spend|purchase|approve|approval|your decision|decide|decision|unlock|override|protected|physical|only you|stripe|dashboard|install)\b/i;
 const CLAIM = /\b(?:task (?:is )?(?:done|complete)|all done|is (?:now )?fixed|fixed\.|completed\.|finished\.|done\.)/i;
 export function reviewerRan(transcriptPath) {
-  try { return fs.readFileSync(transcriptPath, 'utf8').split('\n').some((l) => { try { const d = JSON.parse(l); return d.type === 'assistant' && Array.isArray(d.message?.content) && d.message.content.some((b) => b.type === 'tool_use' && /^(Agent|Task)$/.test(b.name) && /reviewer/i.test(JSON.stringify(b.input || {}))); } catch { return false; } }); } catch { return true; }
+  try { return transcriptLines(transcriptPath, ['reviewer']).some((l) => { try { const d = JSON.parse(l); return d.type === 'assistant' && Array.isArray(d.message?.content) && d.message.content.some((b) => b.type === 'tool_use' && /^(Agent|Task)$/.test(b.name) && /reviewer/i.test(JSON.stringify(b.input || {}))); } catch { return false; } }); } catch { return true; }
 }
 // Shaun does not read code or system talk. A reply to him that is mostly file names, paths and system terms is rejected; it is rewritten in plain English.
 const JARGON = [/\.claude\b/ig, /\boverride(?:\.txt)?\b/ig, /\bhard[- ]?blocks?\b/ig, /\bhooks?\b/ig, /\bheredoc/ig, /\b(?:regex|allowlist|blocklist|stderr|stdout|exit code|protected-paths|scope-guard|done-check|settings\.json)\b/ig, /\b[\w-]+\.(?:mjs|cjs|jsx?|tsx?|json|sh|toml|sql|ya?ml|env|txt|md)\b/ig, /\b(?:src|docs|supabase|scripts|public|lib|components)\/[\w./-]+/ig];
@@ -61,7 +61,7 @@ const normKey = (b) => plainBullet(b).toLowerCase().replace(/[^a-z0-9 ]/g, '').r
 export function earlierAsks(transcriptPath) {
   const keys = new Set(); if (!transcriptPath) return keys;
   try {
-    const texts = []; for (const l of fs.readFileSync(transcriptPath, 'utf8').split('\n').filter(Boolean)) { try { const d = JSON.parse(l); if (d.type !== 'assistant') continue; const c = d.message?.content; const t = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b.type === 'text').map((b) => b.text).join('\n') : ''; if (t.trim()) texts.push(t); } catch {} }
+    const texts = []; for (const l of transcriptLines(transcriptPath, ['"type":"assistant"'], 32 * 1024 * 1024)) { try { const d = JSON.parse(l); if (d.type !== 'assistant') continue; const c = d.message?.content; const t = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b.type === 'text').map((b) => b.text).join('\n') : ''; if (t.trim()) texts.push(t); } catch {} }
     texts.pop(); // the message being judged is the last one
     for (const t of texts) { const sec = askSection(t); if (sec) for (const b of sec.bullets) keys.add(normKey(b)); }
   } catch {}

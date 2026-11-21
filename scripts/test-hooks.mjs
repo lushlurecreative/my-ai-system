@@ -938,5 +938,13 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   task('ACTIVE', ['docs/design/**', 'docs/TASK.md'], [], ''); t('review: docs-only card with unrelated dirty files elsewhere -> no reviewer', reviewNeeded(T), 'none');
   task('ACTIVE', ['docs/design/**', 'src/lib/pricing.ts'], [], ''); t('review: a card that also allows a protected file -> full reviewer', reviewNeeded(T), 'full');
   fs.rmSync(path.join(T, 'src/other'), { recursive: true, force: true }); task('NONE', [], [], ''); }
+// session records can be hundreds of MB: read in chunks, never as one string
+{ const { transcriptLines } = await import(`${SRC}/.claude/hooks/common.mjs`);
+  const big = path.join(os.tmpdir(), 'ais-big-transcript.jsonl'); const filler = JSON.stringify({ type: 'user', message: { content: 'é'.repeat(900) } }) + '\n';
+  const fd = fs.openSync(big, 'w'); for (let i = 0; i < 24000; i++) fs.writeSync(fd, i === 5 ? '{"needle":"first-needle-é"}\n' : filler); fs.writeSync(fd, '{"needle":"last-needle"}\n'); fs.closeSync(fd);
+  t('transcript reader: a 40 MB record is read across chunk boundaries and finds both needle lines', transcriptLines(big, ['needle']).length, 2);
+  t('transcript reader: every line arrives whole (no split characters)', transcriptLines(big, ['"type":"user"']).every((l) => { try { JSON.parse(l); return true; } catch { return false; } }), true);
+  t('transcript reader: with a small tail only the end of the record is read', transcriptLines(big, ['needle'], 1024 * 1024).map((l) => (l.includes('last') ? 'last' : 'first')).join(','), 'last');
+  fs.rmSync(big, { force: true }); }
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

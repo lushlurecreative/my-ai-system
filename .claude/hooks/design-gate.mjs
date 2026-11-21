@@ -3,7 +3,7 @@
 // same-trade references actually opened, design skills actually run, a concept, phone + desktop renders, and at least two rounds with the independent design-critic, the last one a PASS.
 // The record is the session transcript, which the harness writes; the builder cannot edit it, and what it says about itself on the card does not count.
 import fs from 'node:fs'; import path from 'node:path';
-import { readTask, taskCardText, system, globRe } from './common.mjs';
+import { readTask, taskCardText, system, globRe, transcriptLines } from './common.mjs';
 
 const DEFAULT_SKILLS = ['impeccable', 'taste', 'frontend-design', 'ui-ux', 'design-', 'polish', 'critique', 'typeset', 'layout', 'colorize', 'animate', 'distill', 'bolder', 'quieter', 'delight', 'overdrive', 'adapt', 'harden'];
 const WRITERS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
@@ -13,7 +13,7 @@ const textOf = (c) => typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) =
 export function readTranscript(tp) {
   const uses = []; const results = new Map();
   try {
-    for (const l of fs.readFileSync(tp, 'utf8').split('\n')) {
+    for (const l of transcriptLines(tp, ['"tool_use"', 'VERDICT:'])) {
       if (!l.trim()) continue; let d; try { d = JSON.parse(l); } catch { continue; }
       const c = d?.message?.content; if (!Array.isArray(c)) continue;
       if (d.type === 'assistant') for (const b of c) if (b.type === 'tool_use') uses.push({ id: b.id, name: b.name, input: b.input || {}, i: uses.length });

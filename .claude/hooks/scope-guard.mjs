@@ -4,7 +4,8 @@ import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden, unlockHint } from './override.mjs';
 import { designGate } from './design-gate.mjs';
-import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf, projectRoot } from './common.mjs';
+import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, verdictOk, tickClock, taskCardText, quiet, stripInertHeredocs, masterPathOf, projectRoot } from './common.mjs';
+const REPORT_FILE = /(report|evidence|validation|diagnos|audit|acceptance|summary|findings|export|analysis)/i;
 const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS|FIXED|ASKS)\.md$/, /^docs\/notes\//, /^docs\/design\//];
 // A shortcut (symlink) in the project can point at a protected file, a system file or a folder outside the project. The check runs on the path as given AND on where it really lands; either one failing refuses the edit.
 const realOf = (p) => { try { return fs.realpathSync.native(p); } catch { try { return path.join(fs.realpathSync.native(path.dirname(p)), path.basename(p)); } catch { return null; } } };
@@ -34,6 +35,7 @@ function checkEditCore(root, filePath, ctx) {
   }
   if (/^supabase\/migrations\/.+\.sql$/.test(r) || /migrations\/.+\.sql$/.test(r)) { /* migration content is checked by protected-paths */ }
   if (discussionOn(root) && !(r === 'docs/RULINGS.md' || /^docs\/notes\//.test(r))) return deny(`Discussion mode is on: no files change until Shaun says go (or "task mode"). Give your view in chat. Only docs/RULINGS.md (his decisions) and docs/notes/ can be written now.`);
+  if (/^docs\//.test(r) && !/^docs\/(design|notes)\//.test(r) && !ALWAYS_OK.some((x) => x.test(r)) && REPORT_FILE.test(path.basename(r)) && !fs.existsSync(path.resolve(root, r)) && !/^Report:\s*yes/mi.test(taskCardText(root)) && system(root).reportsOnlyWhenAsked !== false) return deny('Do not create a separate report or evidence document. Put the evidence in docs/TASK.md once, at the end. Shaun reads results, not paperwork. Only when he has asked for a report: add the line "Report: yes" to the task card first.');
   if (ALWAYS_OK.some((x) => x.test(r))) return null;
   const t = readTask(root);
   if (t.status !== 'ACTIVE') return deny(`No ACTIVE task in docs/TASK.md (status ${t.status}). Write the task there first (one task, questions, allowed paths, done-means), get Shaun's answers, set Status: ACTIVE, then edit code.`);
@@ -170,7 +172,8 @@ export function designEdit(root, filePath) {
   if (!pats.length || r.startsWith('..') || r.startsWith('docs/design/') || r === 'docs/TASK.md') return null;
   if (!pats.some((g) => globRe(g).test(r))) return null;
   const t = readTask(root); if (t.type === 'DESIGN') return null;
-  return deny(`${r} decides how a customer site looks. Work like this needs a card with "Type: DESIGN" plus "Design:", "Trade:" and "Site:" lines, and the design process (same-trade references, design skills, concept, renders, critic rounds). Open that card first.`);
+  if (/^Design edit:\s*small/mi.test(taskCardText(root)) && fs.existsSync(path.resolve(root, r))) return null; // a small change to a page that already exists (text, colour, spacing, a bug); a new page or a redesign is DESIGN
+  return deny(`${r} decides how a customer site looks. Work like this needs a card with "Type: DESIGN" plus "Design:", "Trade:" and "Site:" lines, and the design process (same-trade references, design skills, concept, renders, critic rounds). Open that card first. (A small change to an existing page, such as wording, colour, spacing or a bug, can stay a BUILD card with the line "Design edit: small".)`);
 }
 export function designCardEdit(root, newText, transcriptPath) {
   if (!designOn(root)) return null;
@@ -192,7 +195,7 @@ export function checkBash(root, cmd, transcriptPath) {
   if (/\bgit\s+push\b/.test(c)) {
     if (/\s(-f|--force|--force-with-lease)\b|\s\+\w/.test(c)) return deny('Force push is never allowed.');
     const toMain = /\bmain\b|\bmaster\b/.test(c) || !/\bgit\s+push\s+\S+\s+\S+/.test(c);
-    if (toMain) { const t = readTask(root); if (t.status !== 'DONE' || t.evidence === 0 || !/PASS/i.test(t.verdict)) return deny(`Push to main is allowed only when docs/TASK.md is DONE with Evidence and a Reviewer verdict PASS (now: ${t.status}, ${t.evidence} evidence lines, verdict "${t.verdict || 'none'}").`); }
+    if (toMain) { const t = readTask(root); if (t.status !== 'DONE' || t.evidence === 0 || !verdictOk(root, t)) return deny(`Push to main is allowed only when docs/TASK.md is DONE with Evidence and a Reviewer verdict PASS (now: ${t.status}, ${t.evidence} evidence lines, verdict "${t.verdict || 'none'}").`); }
   }
   if (/\brm\s+-[a-zA-Z]*r[a-zA-Z]*f|\brm\s+-[a-zA-Z]*f[a-zA-Z]*r|\bgit\s+reset\s+--hard|\bgit\s+checkout\s+--\s+\.|\bgit\s+clean\s+-[a-zA-Z]*f|\bdb\s+reset\b|\bdrop\s+(table|schema|database)\b|\btruncate\s+table\b/i.test(c)) return deny('Destructive command blocked (rm -rf, git reset --hard, git clean, db reset, DROP, TRUNCATE). Ask Shaun.');
   const q = quiet(c); const mentionsSelf = (x) => { const xl = String(x).toLowerCase(); return [...SELF, ...SELF_DIRS].some((s) => xl.includes(s.toLowerCase())); };
@@ -201,7 +204,7 @@ export function checkBash(root, cmd, transcriptPath) {
   return checkShellWrites(root, c);
 }
 export function check(input) {
-  const root = projectRoot(input?.cwd); const name = String(input?.tool_name || ''); const ti = input?.tool_input || {};
+  const root = projectRoot(input?.cwd); tickClock(root); const name = String(input?.tool_name || ''); const ti = input?.tool_input || {};
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) {
     if (rel(root, ti.file_path || '') === 'docs/TASK.md') { const body = [ti.new_string, ti.content, ...(Array.isArray(ti.edits) ? ti.edits.map((e) => e.new_string) : [])].filter(Boolean).join('\n'); const g = gateActivation(root, body); if (g) return g; const dc = designCardEdit(root, body, input?.transcript_path); if (dc) return dc; }
     { const de = designEdit(root, ti.file_path || ti.notebook_path); if (de) return de; }

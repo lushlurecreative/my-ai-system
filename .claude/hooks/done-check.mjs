@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Stop hook. (1) Ends by announcing work -> block (max 2 in a row per reason). (2) Claims done but TASK.md lacks Evidence or Reviewer PASS, or the reviewer agent never ran this session -> block once.
 // (1b) Asks permission to continue mid-task -> block. (1c) Claims done with unticked Done means, or an ANALYSIS with an open Scope ledger -> block. (3) TASK is DONE with a reviewer PASS: autopilot off needs a numbered list of every NEXT item that can start now plus "which numbers"; autopilot on needs the next task started, not a question. Fails open.
-import fs from 'node:fs'; import { designGate } from './design-gate.mjs'; import os from 'node:os'; import path from 'node:path';
-import { readTask, system, discussionOn, readGoAll, projectRoot } from './common.mjs';
+import fs from 'node:fs'; import crypto from 'node:crypto'; import { designGate } from './design-gate.mjs'; import { verdictOk, reviewNeeded, tickClock, readClock, writeClock } from './common.mjs'; import os from 'node:os'; import path from 'node:path';
+import { readTask, system, discussionOn, readGoAll, projectRoot, taskTitle } from './common.mjs';
 const NEEDS_SHAUN = /\bShaun(?:'s)?\b[^|]{0,60}\b(?:action|login|logins|decision|decides|decide|spend|approval|authoriz\w+|unlock|setup|set up|sign-in|only|led)\b|\bneeds? (?:Shaun|your)\b|\b(?:logins?|credentials?|rotate|spend|admin sign-in)\b|\bseparately authorized\b|\bparked\b|\byou(?:r|'ll|'d)?\b|\btype "yes|\bsay (?:when|anything)\b/i;
 export function startableItems(root) {
   let t = ''; try { t = fs.readFileSync(path.join(root, 'docs/NEXT.md'), 'utf8'); } catch { return []; }
@@ -156,10 +156,10 @@ export function judge(message, root, transcriptPath) {
     if (t.type === 'DESIGN') { const g = designGate(root, transcriptPath); if (g) return `This is a DESIGN task and the design work is not proven yet. ${g}`; }
     if (t.type === 'ANALYSIS' && t.ledgerTotal === 0) return 'This is an ANALYSIS task but docs/TASK.md has no "Scope ledger". List every page, file or area in scope as "[ ]" lines, cover each, tick it with evidence (or tick it as "out of scope: reason"), then claim done.';
     if (t.type === 'ANALYSIS' && t.ledgerTicked < t.ledgerTotal) return `${t.ledgerTotal - t.ledgerTicked} of ${t.ledgerTotal} Scope ledger items are not covered. Cover each one and tick it with evidence, or tick it as "out of scope: reason". Do not call the analysis done while any item is open.`;
-    if (!/PASS/i.test(t.verdict)) return `TASK.md has no "Reviewer verdict: PASS". Launch the reviewer agent (Agent tool, subagent_type reviewer) to grade the task against "Done means", record its verdict in TASK.md, then finish.`;
-    if (transcriptPath && !reviewerRan(transcriptPath)) return 'TASK.md says the reviewer passed, but no reviewer agent ran in this session. Run it now and record the real verdict.';
+    if (!verdictOk(root, t)) return `TASK.md has no "Reviewer verdict: PASS". Launch ${reviewNeeded(root) === 'full' ? 'the reviewer (subagent_type reviewer; this change touches money, logins, protected files or security)' : 'the cheaper reviewer (subagent_type reviewer-light)'} once, fix every blocker it lists, log its minors in docs/NEXT.md, record its verdict in TASK.md, then finish. Analysis and docs-only work needs no reviewer: write "Reviewer verdict: NOT REQUIRED (docs only)".`;
+    if (transcriptPath && reviewNeeded(root) !== 'none' && !reviewerRan(transcriptPath)) return 'TASK.md says the reviewer passed, but no reviewer agent ran in this session. Run it now and record the real verdict.';
   }
-  if (t.status === 'DONE' && t.evidence > 0 && /PASS/i.test(t.verdict) && !(transcriptPath && isQuestion(lastUserText(transcriptPath)))) {
+  if (t.status === 'DONE' && t.evidence > 0 && (/PASS/i.test(t.verdict) || verdictOk(root, t)) && !(transcriptPath && isQuestion(lastUserText(transcriptPath)))) {
     const keepGoing = system(root).autopilot || system(root).initiative !== false || readGoAll(root).length > 0; // initiative is on unless a project turns it off
     if ((text.slice(-600).match(/^\s*\d+[.)]\s+\S/gm) || []).length >= 2) return 'Do not end with a numbered list of options or things for Shaun to type. Say in one short message what finished and, only if something truly needs him (a password or login, money or a card, a physical step, a real business decision), the one ask, with Do this and Where.';
     if (keepGoing) { if (startableItems(root).length > 0) return 'This task is DONE with a reviewer PASS and items on docs/NEXT.md can start without Shaun. Do not end with a report or a question. Move the top such item into docs/TASK.md as a new task and start it; tell Shaun what you found and fixed afterwards, in plain words. (Skip items that need his login, money or a decision, and anything a ruling in docs/RULINGS.md parks.)'; }
@@ -174,8 +174,26 @@ export function judge(message, root, transcriptPath) {
 function main() {
   let input = {}; try { input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch { return; }
   const root = projectRoot(input.cwd); const file = path.join(os.tmpdir(), `ais-stop-${String(input.session_id || 'x').replace(/[^\w-]/g, '')}.count`);
+  // Time cap: one plain line from the builder when a task has run long (active time, gaps over 10 minutes not counted).
+  const clock = tickClock(root); const capMin = Number.isFinite(system(root).taskMinutesCap) ? system(root).taskMinutesCap : 30;
+  if (clock && !clock.warned && readTask(root).status === 'ACTIVE' && clock.active >= capMin * 60000) {
+    writeClock(root, { ...clock, warned: true });
+    process.stdout.write(JSON.stringify({ decision: 'block', reason: `This task has run about ${Math.round(clock.active / 60000)} minutes. Tell Shaun in ONE plain sentence what is making it slow (for example waiting on a reviewer, a long test run, a slow build) and what you will do about it. Then carry on.` })); return;
+  }
   const reason = judge(input.last_assistant_message, root, input.transcript_path);
-  if (!reason) { try { fs.rmSync(file, { force: true }); } catch {} return; }
+  if (!reason) {
+    try { fs.rmSync(file, { force: true }); } catch {}
+    try { // task log: one line per finished task, so time and review counts are measured, not guessed
+      const t = readTask(root); const c = readClock(root);
+      if (t.status === 'DONE' && c && !c.recorded) {
+        const h = crypto.createHash('sha1').update(taskTitle(root)).digest('hex').slice(0, 8); const sid = String(input.session_id || 'x').replace(/[^\w-]/g, '');
+        const num = (f) => { try { return Number(fs.readFileSync(path.join(os.tmpdir(), f), 'utf8')) || 0; } catch { return 0; } };
+        fs.appendFileSync(path.join(root, '.claude/ledger.jsonl'), JSON.stringify({ date: new Date().toISOString().slice(0, 10), task: taskTitle(root), type: t.type, minutes: Math.round(c.active / 60000), reviews: num(`ais-reviews-${sid}-${h}.count`), helpers: num(`ais-agents-${sid}-${h}.count`), warned: !!c.warned }) + '\n');
+        writeClock(root, { ...c, recorded: true });
+      }
+    } catch { /* never block on logging */ }
+    return;
+  }
   // Count repeats of the SAME reason only; a new reason starts a new count, so one cap cannot be spent on an earlier, different block.
   let n = 0; try { const [k, c] = fs.readFileSync(file, 'utf8').split('\n'); if (k === reason.slice(0, 40)) n = Number(c) || 0; } catch {}
   if (n >= MAX) { try { fs.rmSync(file, { force: true }); } catch {} return; }

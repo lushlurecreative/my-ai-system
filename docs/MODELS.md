@@ -29,3 +29,6 @@ Each agent's model is written in its own file (`.claude/agents/<name>.md`, the `
 
 An agent not in this table (a built-in helper type, for example) runs on Sonnet; Opus and Fable are denied unless `allowExpensiveHelpers` is true in `.claude/system.json`.
 To change an agent's model: Shaun says "yes, add agent <name>", then the `model:` line in its file is edited and this table is updated in the same change.
+
+## Reviewers
+`reviewer` (opus) only when the work touches money, logins, protected files or security. `reviewer-light` (sonnet) for ordinary work. Docs-only and analysis work needs no reviewer. Two reviews per task at most.

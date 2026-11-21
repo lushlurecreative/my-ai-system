@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
+import { execFileSync } from 'node:child_process'; import { lists } from './protected-list.mjs'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 export const deny = (reason) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
 export function rel(root, p) { p = String(p || ''); if (path.isAbsolute(p)) p = path.relative(root, p); return p.replace(/^\.\//, ''); }
 export function readTask(root) {
@@ -106,3 +106,42 @@ export function projectRoot(reportedCwd) {
 }
 export function system(root) { try { return JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch { return {}; } }
 export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '\u0001').replace(/\*\*/g, '\u0002').replace(/\*/g, '[^/]*').replace(/\u0001/g, '(?:.*/)?').replace(/\u0002/g, '.*') + '$', 'i'); // case-insensitive: macOS and Windows file systems treat Claude.md and CLAUDE.md as the same file
+
+// ---- review, time and cost discipline ----
+// Files changed in this project and not yet on the remote: uncommitted plus commits ahead. null when git cannot say.
+export function changedFiles(root) {
+  try {
+    const run = (a) => execFileSync('git', ['-C', root, ...a], { timeout: 6000, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    const out = new Set();
+    for (const l of run(['status', '--porcelain']).split('\n')) { const f = l.slice(3).trim().replace(/^"|"$/g, '').split(' -> ').pop(); if (f) out.add(f); }
+    try { for (const f of run(['diff', '--name-only', '@{upstream}..HEAD']).split('\n')) if (f.trim()) out.add(f.trim()); } catch { /* no upstream */ }
+    return [...out];
+  } catch { return null; }
+}
+const RISK_RE = /(^|\/)(auth|login|payment|billing|checkout|secur|secret|entitle|migrations?|rls|\.env)|supabase\/functions|\.sql$/i;
+export function highRisk(root, files) {
+  let P = { files: [], dbFunctions: [], words: [] }; try { P = lists(root) || P; } catch { /* none */ }
+  const list = [...(files || []), ...readTask(root).allowed];
+  return list.some((f) => RISK_RE.test(f) || (P.files || []).some((g) => String(f).toLowerCase() === String(g).toLowerCase() || globRe(g).test(f)));
+}
+// 'none': analysis or docs-only work (checks, no reviewer). 'light': ordinary work (cheaper reviewer). 'full': money, logins, protected files, security (Opus reviewer).
+export function reviewNeeded(root) {
+  const t = readTask(root); if (system(root).reviewTiers === false) return 'full';
+  if (t.type === 'ANALYSIS') return 'none';
+  const files = changedFiles(root);
+  if (files && files.length && files.every((f) => /^docs\//.test(f) || /\.md$/i.test(f))) return 'none';
+  return highRisk(root, files) ? 'full' : 'light';
+}
+export const verdictOk = (root, t) => (reviewNeeded(root) === 'none' ? true : /PASS/i.test(t.verdict));
+// Task clock: active minutes on the current task (gaps over 10 minutes are not counted). Written only by hooks.
+const clockFile = (root) => path.join(root, '.claude/task-clock.json');
+export function tickClock(root) {
+  try {
+    const title = taskTitle(root); const now = Date.now(); let c = {}; try { c = JSON.parse(fs.readFileSync(clockFile(root), 'utf8')); } catch { /* new */ }
+    if (c.title !== title) c = { title, active: 0, last: now, warned: false, recorded: false };
+    else { c.active += Math.min(now - (c.last || now), 10 * 60 * 1000); c.last = now; }
+    fs.writeFileSync(clockFile(root), JSON.stringify(c)); return c;
+  } catch { return null; }
+}
+export const readClock = (root) => { try { return JSON.parse(fs.readFileSync(clockFile(root), 'utf8')); } catch { return null; } };
+export const writeClock = (root, c) => { try { fs.writeFileSync(clockFile(root), JSON.stringify(c)); } catch { /* ignore */ } };

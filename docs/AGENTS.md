@@ -12,6 +12,7 @@ Claude hands a job to a listed agent. It does not invent helpers on the fly. Age
 
 | Job | Agent | Model (authority: the agent file) | Changes files? | Status | Check that proves it |
 |---|---|---|---|---|---|
+| Grade ordinary work against Done means (cheaper) | reviewer-light | sonnet | no | installed | grade one finished task; returns blockers and minors |
 | Look at a site or data through one lens | analyst | sonnet | no | installed | run on one page with the clutter lens; returns findings in the required shape |
 | Distribution, positioning, buyer language | marketing | sonnet | no | installed | ask for three channels with quoted evidence and URLs; every claim has a URL |
 | Paywall, auth, secrets, database policy holes | security | opus | no | installed | ask it to review one file; returns severity and a minimal fix |

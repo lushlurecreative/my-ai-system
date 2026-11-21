@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Stop hook. (1) Ends by announcing work -> block (max 2 in a row per reason). (2) Claims done but TASK.md lacks Evidence or Reviewer PASS, or the reviewer agent never ran this session -> block once.
 // (1b) Asks permission to continue mid-task -> block. (1c) Claims done with unticked Done means, or an ANALYSIS with an open Scope ledger -> block. (3) TASK is DONE with a reviewer PASS: autopilot off needs a numbered list of every NEXT item that can start now plus "which numbers"; autopilot on needs the next task started, not a question. Fails open.
-import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
+import fs from 'node:fs'; import { designGate } from './design-gate.mjs'; import os from 'node:os'; import path from 'node:path';
 import { readTask, system, discussionOn, readGoAll, projectRoot } from './common.mjs';
 const NEEDS_SHAUN = /\bShaun(?:'s)?\b[^|]{0,60}\b(?:action|login|logins|decision|decides|decide|spend|approval|authoriz\w+|unlock|setup|set up|sign-in|only|led)\b|\bneeds? (?:Shaun|your)\b|\b(?:logins?|credentials?|rotate|spend|admin sign-in)\b|\bseparately authorized\b|\bparked\b|\byou(?:r|'ll|'d)?\b|\btype "yes|\bsay (?:when|anything)\b/i;
 export function startableItems(root) {
@@ -153,6 +153,7 @@ export function judge(message, root, transcriptPath) {
     if (t.status !== 'DONE' || t.evidence === 0) return `You said it is done, but docs/TASK.md is ${t.status} with ${t.evidence} evidence lines. Add the evidence (test output, screenshot path, live URL and result) and set Status: DONE, or do not claim done.`;
     if (t.doneTotal === 0) return 'docs/TASK.md has no "Done means" lines. Write the checkable statements, verify each, tick them, then claim done.';
     if (t.doneTicked < t.doneTotal) return `${t.doneTotal - t.doneTicked} of ${t.doneTotal} "Done means" lines are not ticked in docs/TASK.md. Verify each one, put "[x]" in front of it with its evidence, then claim done. If part is not finished, finish it. Do not call it done.`;
+    if (t.type === 'DESIGN') { const g = designGate(root, transcriptPath); if (g) return `This is a DESIGN task and the design work is not proven yet. ${g}`; }
     if (t.type === 'ANALYSIS' && t.ledgerTotal === 0) return 'This is an ANALYSIS task but docs/TASK.md has no "Scope ledger". List every page, file or area in scope as "[ ]" lines, cover each, tick it with evidence (or tick it as "out of scope: reason"), then claim done.';
     if (t.type === 'ANALYSIS' && t.ledgerTicked < t.ledgerTotal) return `${t.ledgerTotal - t.ledgerTicked} of ${t.ledgerTotal} Scope ledger items are not covered. Cover each one and tick it with evidence, or tick it as "out of scope: reason". Do not call the analysis done while any item is open.`;
     if (!/PASS/i.test(t.verdict)) return `TASK.md has no "Reviewer verdict: PASS". Launch the reviewer agent (Agent tool, subagent_type reviewer) to grade the task against "Done means", record its verdict in TASK.md, then finish.`;

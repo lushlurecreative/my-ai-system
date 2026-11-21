@@ -3,8 +3,9 @@
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden, unlockHint } from './override.mjs';
+import { designGate } from './design-gate.mjs';
 import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, quiet, stripInertHeredocs, masterPathOf, projectRoot } from './common.mjs';
-const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS|FIXED|ASKS)\.md$/, /^docs\/notes\//];
+const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS|FIXED|ASKS)\.md$/, /^docs\/notes\//, /^docs\/design\//];
 // A shortcut (symlink) in the project can point at a protected file, a system file or a folder outside the project. The check runs on the path as given AND on where it really lands; either one failing refuses the edit.
 const realOf = (p) => { try { return fs.realpathSync.native(p); } catch { try { return path.join(fs.realpathSync.native(path.dirname(p)), path.basename(p)); } catch { return null; } } };
 export function checkEdit(root, filePath) {
@@ -159,9 +160,31 @@ export function checkBrowser(cmd) {
   if (/\bwebbrowser\.open|\bwebbrowser\.get\(|\bopen\(\s*['"]https?:|\bopenurl\b|require\(['"]open['"]\)|from\s+['"]open['"]|import\s+open\s+from/.test(q)) return deny(why);
   return null;
 }
-export function checkBash(root, cmd) {
+
+// Design work is trusted only when the session's own record proves it (design-gate.mjs). Three guards: (1) a file that decides how a customer site looks can only change under a Type: DESIGN card;
+// (2) a DESIGN card cannot be marked DONE until the gate passes; (3) an ACTIVE DESIGN card cannot be relabelled as another type; (4) no headless Claude run with the skills switched off.
+const designOn = (root) => system(root).designGate !== false;
+export function designEdit(root, filePath) {
+  if (!designOn(root)) return null;
+  const pats = Array.isArray(system(root).designPaths) ? system(root).designPaths : []; const r = rel(root, filePath || '');
+  if (!pats.length || r.startsWith('..') || r.startsWith('docs/design/') || r === 'docs/TASK.md') return null;
+  if (!pats.some((g) => globRe(g).test(r))) return null;
+  const t = readTask(root); if (t.type === 'DESIGN') return null;
+  return deny(`${r} decides how a customer site looks. Work like this needs a card with "Type: DESIGN" plus "Design:", "Trade:" and "Site:" lines, and the design process (same-trade references, design skills, concept, renders, critic rounds). Open that card first.`);
+}
+export function designCardEdit(root, newText, transcriptPath) {
+  if (!designOn(root)) return null;
+  const cur = readTask(root); const txt = String(newText || '');
+  if (cur.type === 'DESIGN' && cur.status === 'ACTIVE' && /^Type:\s*(?!DESIGN\b)\w+/mi.test(txt)) return deny('This is a DESIGN task; its type cannot be changed while it is active. Finish it through the design process.');
+  if (cur.type === 'DESIGN' && /^Status:\s*DONE\b/mi.test(txt)) { const g = designGate(root, transcriptPath); if (g) return deny(`Not DONE yet. ${g}`); }
+  return null;
+}
+const HEADLESS_OFF = /\bclaude\b[^\n;|&]*(?:\s-p\b|\s--print\b)[^\n;|&]*(?:--disable-slash-commands|--setting-sources\s*(?:=\s*)?(?:''|""|\s))|\bclaude\b[^\n;|&]*(?:--disable-slash-commands|--setting-sources\s*(?:=\s*)?(?:''|""))[^\n;|&]*(?:\s-p\b|\s--print\b)/;
+export function checkBash(root, cmd, transcriptPath) {
   const c = String(cmd || '');
   { const b = checkBrowser(c); if (b) return b; }
+  if (designOn(root) && HEADLESS_OFF.test(quiet(c))) return deny('Do not run a separate headless Claude with the design skills switched off to make customer designs. Design in this session (or with Agent helpers), using the design skills, so the work can be checked.');
+  if (/TASK\.md/.test(c) && /Status:\s*DONE/i.test(c) && /(>>?|\btee\b|\bsed\s+-\w*i|\bpython3?\b|\bnode\b|\bperl\b|\bawk\b)/.test(c)) { const g = designCardEdit(root, c, transcriptPath); if (g) return g; }
   { const m = checkMasterTouch(root, c); if (m) return m; }
   const inst = checkInstall(root, c); if (inst) return inst;
   if (/TASK\.md/.test(c) && /Status:\s*ACTIVE/i.test(c) && /(>>?|\btee\b|\bsed\s+-\w*i|\bpython3?\b|\bnode\b|\bperl\b|\bawk\b)/.test(c)) { const g = gateActivation(root, c); if (g) return g; }
@@ -180,10 +203,11 @@ export function checkBash(root, cmd) {
 export function check(input) {
   const root = projectRoot(input?.cwd); const name = String(input?.tool_name || ''); const ti = input?.tool_input || {};
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) {
-    if (rel(root, ti.file_path || '') === 'docs/TASK.md') { const g = gateActivation(root, [ti.new_string, ti.content, ...(Array.isArray(ti.edits) ? ti.edits.map((e) => e.new_string) : [])].filter(Boolean).join('\n')); if (g) return g; }
+    if (rel(root, ti.file_path || '') === 'docs/TASK.md') { const body = [ti.new_string, ti.content, ...(Array.isArray(ti.edits) ? ti.edits.map((e) => e.new_string) : [])].filter(Boolean).join('\n'); const g = gateActivation(root, body); if (g) return g; const dc = designCardEdit(root, body, input?.transcript_path); if (dc) return dc; }
+    { const de = designEdit(root, ti.file_path || ti.notebook_path); if (de) return de; }
     return checkEdit(root, ti.file_path || ti.notebook_path);
   }
-  if (name === 'Bash') return checkBash(root, ti.command);
+  if (name === 'Bash') return checkBash(root, ti.command, input?.transcript_path);
   return null;
 }
 if (import.meta.url === `file://${process.argv[1]}`) { try { const r = check(JSON.parse(fs.readFileSync(0, 'utf8') || '{}')); if (r) process.stdout.write(JSON.stringify(r)); } catch { /* fail open */ } }

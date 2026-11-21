@@ -4,7 +4,7 @@ Status: NONE
 (Status is one of: NONE | ACTIVE | DONE | BLOCKED. One task lives here at a time.)
 
 Type: BUILD
-(BUILD changes the project. ANALYSIS only looks and reports; it may change nothing outside docs/.)
+(BUILD changes the project. ANALYSIS only looks and reports; it may change nothing outside docs/. DESIGN is anything that decides how a page, site or screen looks; it needs the extra lines Design:, Trade:, Site:, Rulings applied: and follows the Design work rules in CLAUDE.md.)
 
 Task:
 - (one sentence: what Shaun asked for)

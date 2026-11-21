@@ -795,5 +795,80 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('memory: the memory index file -> allow', decision(run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: path.join(os.homedir(), '.claude/projects/-Users-shaun-washwise/memory/MEMORY.md'), content: 'x' } })), 'allow');
   for (const bad of ['.claude/settings.json', '.claude/CLAUDE.md', '.claude/projects/-Users-shaun-washwise/settings.json', '.claude/projects/x/memory/../../../settings.json', '.ssh/authorized_keys', '.bashrc']) t(`memory: other outside file stays refused: ${bad}`, decision(run('scope-guard.mjs', { tool_name: 'Write', tool_input: { file_path: path.join(os.homedir(), bad), content: 'x' } })), 'deny');
 }
+// folder patterns reach every level below, not just one
+{ const { globRe } = await import(`${SRC}/.claude/hooks/common.mjs`);
+  for (const [g, f, want] of [['src/pages/**', 'src/pages/a/b/c.tsx', true], ['src/pages/**', 'src/pages/a.tsx', true], ['**/sites/**', 'docs/x/sites/nuit/index.html', true], ['supabase/migrations/**', 'supabase/migrations/2026/x.sql', true], ['src/*.ts', 'src/a/b.ts', false], ['src/pages/**', 'src/other/a.tsx', false], ['**/*.sql', 'a/b/c.sql', true]]) t(`glob ${g} vs ${f}`, globRe(g).test(f), want); }
+// ---- design gate ----
+{
+  const { designGate } = await import(`${SRC}/.claude/hooks/design-gate.mjs`);
+  const png = (w, h) => { const b = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b); b.writeUInt32BE(13, 8); b.write('IHDR', 12); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); return b; };
+  const D = path.join(T, 'docs/design/nuit'); const sys0 = JSON.stringify({ ...(() => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8')); } catch { return {}; } })(), designGate: true, designPaths: ['**/sites/**'], designSitesDirs: [] }) + '\n'; fs.writeFileSync(path.join(T, '.claude/system.json'), sys0);
+  const urls = ['https://bakeone.com/', 'https://croissanttown.com/menu', 'https://panaderia-luna.ec/', 'https://pastelnoir.co/', 'https://masamadre.shop/', 'https://hornolocal.ec/'];
+  const verdictTxt = (v) => `Fix the hero.\nVIEWED: phone.png, desktop.png\nTRADE-RELEVANCE: ok, all bakeries\nRULINGS: checked, kept\nPAIRWISE: Sheet A; three differences; clearly better\nGARBAGE-CASE: thin; does not hold\nVERDICT: ${v}`;
+  const build = (o = {}) => {
+    fs.rmSync(path.join(T, 'docs/design'), { recursive: true, force: true }); fs.rmSync(path.join(T, 'sites'), { recursive: true, force: true });
+    fs.mkdirSync(path.join(D, 'shots'), { recursive: true }); fs.mkdirSync(path.join(T, 'sites/nuit'), { recursive: true });
+    fs.writeFileSync(path.join(T, 'sites/nuit/index.html'), '<div class="hero-x1 band-x2 card-x3">x</div>');
+    fs.writeFileSync(path.join(D, 'shots/phone.png'), png(o.noPhone ? 1000 : 390, 3000)); fs.writeFileSync(path.join(D, 'shots/desktop.png'), png(1440, 3000));
+    const ref = (k, u, l) => `- ${k} | ${u} | ${l} | great bakery sites show the products first with big photographs | take the product-first grid and the warm tone for ours\n`;
+    fs.writeFileSync(path.join(D, 'REFERENCES.md'), '# refs\n' + urls.map((u, i) => ref(i < (o.neigh ? 3 : 6) ? 'same' : 'neighbor', u, i < 2 ? 'local' : '-')).join('') + (o.neigh ? ref('neighbor', 'https://extra.example/', '-') : ''));
+    fs.writeFileSync(path.join(D, 'CONCEPT.md'), `Direction: a night bakery run by a family, the cat that guards the ovens. bakeone croissanttown panaderia masamadre pastelnoir hornolocal each lent one idea (product grid, warm tone, menu rhythm) and became ours. ${'The page tells the story of the family bakery at night with real photographs and a type pairing built for it. '.repeat(4)}\nDifferent from: yaw, delicias, moritas: none of them has a story spine.\nHue: ink and amber\nFonts: fraunces dm sans\nHero: arch photograph with eyes\nDensity: airy\nOrder: hero menu family visit\n`);
+    fs.writeFileSync(path.join(D, 'CONTENT.md'), `Photos: ${o.fewPhotos ? 'sites/nuit/p1.jpg' : [1, 2, 3, 4, 5, 6].map((n) => `sites/nuit/p${n}.jpg`).join(', ')}\nItems: ${o.fewItems ? 3 : 12}\nDesigned assets: cat illustration\n`);
+    for (let n = 1; n <= 6; n++) fs.writeFileSync(path.join(T, `sites/nuit/p${n}.jpg`), 'x');
+    fs.writeFileSync(path.join(T, 'docs/TASK.md'), `# Current task\n\nStatus: ${o.status || 'ACTIVE'}\nType: ${o.type || 'DESIGN'}\nDesign: ${o.noDesign ? '' : 'nuit'}\nTrade: bakery\nSite: sites/nuit\n\nTask:\n- nuit page\n\nAllowed paths:\n- sites/**\n- docs/design/**\n\nTools needed:\n- none\n\nRulings applied:\n- 2026-10-24 use the design tools with a critique loop: followed\n\nDone means:\n- [x] it\n\nEvidence:\n- a\n\nReviewer verdict:\n- PASS\n`);
+    // the record
+    const lines = []; let n = 0; const id = () => `t${++n}`;
+    const use = (name, input) => { const i = id(); lines.push(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: i, name, input }] } })); return i; };
+    const res = (i, text) => lines.push(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: i, content: text }] } }));
+    for (const sk of (o.skills || ['impeccable', 'taste-skill', 'frontend-design'])) res(use('Skill', { skill: sk }), 'ok');
+    for (const u of urls.slice(0, o.opened ?? 6)) res(use('mcp__playwright__browser_navigate', { url: u }), 'ok');
+    use('Write', { file_path: path.join(T, 'sites/nuit/index.html'), content: 'v1' });
+    const crit = (v) => res(use('Agent', { subagent_type: 'design-critic', prompt: 'review' }), o.badCritic ? v.replace(/^GARBAGE-CASE.*\n/m, '') : v);
+    crit(verdictTxt('FAIL'));
+    if (!o.noFix) use('Edit', { file_path: path.join(T, 'sites/nuit/index.html'), old_string: 'v1', new_string: 'v2' });
+    if (!o.noLook) { use('Read', { file_path: path.join(D, 'shots/phone.png') }); use('Read', { file_path: path.join(D, 'shots/desktop.png') }); }
+    if (!o.oneRound) crit(verdictTxt(o.lastFail ? 'FAIL' : 'PASS'));
+    if (o.editAfter) use('Edit', { file_path: path.join(T, 'sites/nuit/index.html'), old_string: 'v2', new_string: 'v3' });
+    const tp = path.join(os.tmpdir(), 'ais-design-transcript.jsonl'); fs.writeFileSync(tp, lines.join('\n') + '\n'); return tp;
+  };
+  let tp = build(); t('design gate: complete proven work -> passes', designGate(T, tp), null);
+  const has = (o, word) => { const r = designGate(T, build(o)); return typeof r === 'string' && new RegExp(word, 'i').test(r); };
+  t('design gate: no Design line -> refused', has({ noDesign: true }, 'Design:'), true);
+  t('design gate: only two design skills ran -> refused', has({ skills: ['impeccable', 'taste'] }, 'design skill'), true);
+  t('design gate: references listed but not opened -> refused', has({ opened: 3 }, 'actually opened'), true);
+  t('design gate: more than two neighbor references -> refused', has({ neigh: true }, 'neighbor'), true);
+  t('design gate: no phone-width render -> refused', has({ noPhone: true }, 'phone width'), true);
+  t('design gate: too little real material -> stop on this business', has({ fewPhotos: true }, 'Not enough real material'), true);
+  t('design gate: too few real items -> stop on this business', has({ fewItems: true }, 'Not enough real material'), true);
+  t('design gate: only one critic round -> refused', has({ oneRound: true }, 'at least 2 rounds'), true);
+  t('design gate: critic last verdict FAIL -> refused', has({ lastFail: true }, 'last verdict is FAIL'), true);
+  t('design gate: nothing changed between critic rounds -> refused', has({ noFix: true }, 'No change to the page'), true);
+  t('design gate: page changed after the last PASS -> refused', has({ editAfter: true }, 'open both renders|changed after'), true);
+  t('design gate: builder never looked at the renders -> refused', has({ noLook: true }, 'open both renders yourself'), true);
+  t('design gate: critic skipped a required line -> refused', has({ badCritic: true }, 'missing a required line'), true);
+  t('design gate: a BUILD card is not gated', (() => { build({ type: 'BUILD' }); return designGate(T, tp); })(), null);
+  // concept too close to an earlier concept
+  tp = build(); fs.mkdirSync(path.join(T, 'docs/design/old'), { recursive: true }); fs.writeFileSync(path.join(T, 'docs/design/old/CONCEPT.md'), 'Hue: ink and amber\nFonts: fraunces dm sans\nHero: arch photograph with eyes\nDensity: airy\nOrder: hero menu family visit\n');
+  t('design gate: concept nearly the same as an earlier one -> refused', /too close/.test(designGate(T, tp) || ''), true);
+  // layout repeated
+  tp = build(); fs.mkdirSync(path.join(T, 'prior/yaw'), { recursive: true }); fs.writeFileSync(path.join(T, 'prior/yaw/index.html'), '<div class="hero-x1 band-x2 card-x3">y</div>');
+  fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ ...JSON.parse(sys0), designSitesDirs: ['prior'] }) + '\n');
+  t('design gate: same page structure as an earlier site -> refused', /repeats the layout/.test(designGate(T, tp) || ''), true);
+  fs.writeFileSync(path.join(T, '.claude/system.json'), sys0); fs.rmSync(path.join(T, 'prior'), { recursive: true, force: true });
+  // the hooks around the gate
+  tp = build({ opened: 2 }); // unproven record, card ACTIVE DESIGN
+  const designEditTool = (name, ti) => run('scope-guard.mjs', { tool_name: name, tool_input: ti, transcript_path: tp });
+  t('design hooks: setting DONE on an unproven DESIGN card -> deny', decision(designEditTool('Edit', { file_path: path.join(T, 'docs/TASK.md'), old_string: 'Status: ACTIVE', new_string: 'Status: DONE' })), 'deny');
+  t('design hooks: relabelling an active DESIGN card as BUILD -> deny', decision(designEditTool('Edit', { file_path: path.join(T, 'docs/TASK.md'), old_string: 'Type: DESIGN', new_string: 'Type: BUILD' })), 'deny');
+  tp = build(); t('design hooks: setting DONE on a proven DESIGN card -> allow', decision(designEditTool('Edit', { file_path: path.join(T, 'docs/TASK.md'), old_string: 'Status: ACTIVE', new_string: 'Status: DONE' })), 'allow');
+  build({ type: 'BUILD' }); t('design hooks: editing a site file under a BUILD card -> deny', decision(designEditTool('Edit', { file_path: path.join(T, 'sites/nuit/index.html') })), 'deny');
+  build(); t('design hooks: editing a site file under a DESIGN card -> allow', decision(designEditTool('Edit', { file_path: path.join(T, 'sites/nuit/index.html') })), 'allow');
+  t('design hooks: writing design evidence files is allowed', decision(designEditTool('Write', { file_path: path.join(T, 'docs/design/nuit/CONCEPT.md'), content: 'x' })), 'allow');
+  for (const c of ["claude -p 'make a site' --disable-slash-commands", "claude --print 'x' --setting-sources ''", "claude --setting-sources '' -p 'x'"]) t(`design hooks: headless Claude with skills off refused: ${c.slice(0, 40)}`, decision(bash(c)), 'deny');
+  t('design hooks: ordinary headless Claude call is not refused here', decision(bash("claude -p 'summarise this file'")), 'allow');
+  build({ opened: 2 }); fs.writeFileSync(path.join(T, 'docs/TASK.md'), fs.readFileSync(path.join(T, 'docs/TASK.md'), 'utf8').replace('Status: ACTIVE', 'Status: DONE'));
+  t('design hooks: claiming done on an unproven DESIGN card -> stop check bounces', decision(run('done-check.mjs', { session_id: 'dg1', last_assistant_message: 'The task is done.', transcript_path: tp })), 'block');
+  task('NONE', [], [], ''); fs.rmSync(path.join(T, 'docs/design'), { recursive: true, force: true }); fs.rmSync(path.join(T, 'sites'), { recursive: true, force: true });
+}
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

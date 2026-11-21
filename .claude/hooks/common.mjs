@@ -105,4 +105,4 @@ export function projectRoot(reportedCwd) {
   return start;
 }
 export function system(root) { try { return JSON.parse(fs.readFileSync(path.join(root, '.claude/system.json'), 'utf8')); } catch { return {}; } }
-export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$', 'i'); // case-insensitive: macOS and Windows file systems treat Claude.md and CLAUDE.md as the same file
+export const globRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '\u0001').replace(/\*\*/g, '\u0002').replace(/\*/g, '[^/]*').replace(/\u0001/g, '(?:.*/)?').replace(/\u0002/g, '.*') + '$', 'i'); // case-insensitive: macOS and Windows file systems treat Claude.md and CLAUDE.md as the same file

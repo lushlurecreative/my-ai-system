@@ -933,5 +933,10 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('archive: finished NEXT items and old FIXED lines move out', !/DONE/.test(fs.readFileSync(path.join(AD, 'docs/NEXT.md'), 'utf8')) && !/: old/.test(fs.readFileSync(path.join(AD, 'docs/FIXED.md'), 'utf8')), true);
   task('NONE', [], [], '');
 }
+// a docs-only card is judged by what it allows, not by unrelated uncommitted work elsewhere
+{ const { reviewNeeded } = await import(`${SRC}/.claude/hooks/common.mjs`); fs.mkdirSync(path.join(T, 'src/other'), { recursive: true }); fs.writeFileSync(path.join(T, 'src/other/unrelated.ts'), 'x');
+  task('ACTIVE', ['docs/design/**', 'docs/TASK.md'], [], ''); t('review: docs-only card with unrelated dirty files elsewhere -> no reviewer', reviewNeeded(T), 'none');
+  task('ACTIVE', ['docs/design/**', 'src/lib/pricing.ts'], [], ''); t('review: a card that also allows a protected file -> full reviewer', reviewNeeded(T), 'full');
+  fs.rmSync(path.join(T, 'src/other'), { recursive: true, force: true }); task('NONE', [], [], ''); }
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

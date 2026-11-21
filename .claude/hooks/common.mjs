@@ -128,6 +128,7 @@ export function highRisk(root, files) {
 export function reviewNeeded(root) {
   const t = readTask(root); if (system(root).reviewTiers === false) return 'full';
   if (t.type === 'ANALYSIS') return 'none';
+  if (t.allowed.length && t.allowed.every((a) => /^docs\//.test(a)) && !highRisk(root, [])) return 'none'; // the card only allows docs, so unrelated uncommitted work elsewhere does not decide the review
   const files = changedFiles(root);
   if (files && files.length && files.every((f) => /^docs\//.test(f) || /\.md$/i.test(f))) return 'none';
   return highRisk(root, files) ? 'full' : 'light';

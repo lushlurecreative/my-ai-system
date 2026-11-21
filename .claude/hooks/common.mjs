@@ -147,20 +147,23 @@ export function tickClock(root) {
 export const readClock = (root) => { try { return JSON.parse(fs.readFileSync(clockFile(root), 'utf8')); } catch { return null; } };
 export const writeClock = (root, c) => { try { fs.writeFileSync(clockFile(root), JSON.stringify(c)); } catch { /* ignore */ } };
 
-// Session records can reach hundreds of MB. Read only the last part of the file, in chunks, and keep only the lines that contain a needle. Never reads the whole file into one string.
-import { StringDecoder } from 'node:string_decoder';
-export function transcriptLines(tp, needles = [], tailBytes = 256 * 1024 * 1024) {
-  const out = []; let fd = null;
+// Session records can reach gigabytes (screenshots make single lines megabytes long). Work on raw bytes in chunks: find line ends and needles natively and decode only the lines that match.
+export function transcriptLines(tp, needles = [], tailBytes = Infinity) {
+  const out = []; let fd = null; const nb = needles.map((n) => Buffer.from(n, 'utf8'));
   try {
-    fd = fs.openSync(tp, 'r'); const size = fs.fstatSync(fd).size; let pos = Math.max(0, size - tailBytes); const partialStart = pos > 0;
-    const CH = 8 * 1024 * 1024; const buf = Buffer.alloc(CH); const dec = new StringDecoder('utf8'); let carry = ''; let firstLine = partialStart;
-    const take = (l) => { if (firstLine) { firstLine = false; return; } if (l && (!needles.length || needles.some((n) => l.includes(n)))) out.push(l); };
+    fd = fs.openSync(tp, 'r'); const size = fs.fstatSync(fd).size; let pos = Number.isFinite(tailBytes) ? Math.max(0, size - tailBytes) : 0; let skipFirst = pos > 0;
+    const CH = 16 * 1024 * 1024; const buf = Buffer.alloc(CH); let carry = []; let carryLen = 0;
+    const take = (lineBuf) => { if (skipFirst) { skipFirst = false; return; } if (!lineBuf.length) return; if (!nb.length || nb.some((n) => lineBuf.indexOf(n) !== -1)) out.push(lineBuf.toString('utf8')); };
     while (pos < size) {
       const n = fs.readSync(fd, buf, 0, Math.min(CH, size - pos), pos); if (n <= 0) break; pos += n;
-      const parts = (carry + dec.write(buf.subarray(0, n))).split('\n'); carry = parts.pop();
-      for (const l of parts) take(l);
+      const chunk = buf.subarray(0, n); let start = 0;
+      for (;;) {
+        const nl = chunk.indexOf(10, start);
+        if (nl === -1) { if (start < n) { carry.push(Buffer.from(chunk.subarray(start, n))); carryLen += n - start; } break; }
+        const piece = chunk.subarray(start, nl); take(carry.length ? Buffer.concat([...carry, piece], carryLen + piece.length) : piece); carry = []; carryLen = 0; start = nl + 1;
+      }
     }
-    carry += dec.end(); if (carry) take(carry);
+    if (carry.length) take(Buffer.concat(carry, carryLen));
   } catch { /* unreadable: return what was read */ } finally { if (fd !== null) try { fs.closeSync(fd); } catch { /* ignore */ } }
   return out;
 }

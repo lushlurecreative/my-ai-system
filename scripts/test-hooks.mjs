@@ -959,5 +959,11 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('transcript reader: every line arrives whole (no split characters)', transcriptLines(big, ['"type":"user"']).every((l) => { try { JSON.parse(l); return true; } catch { return false; } }), true);
   t('transcript reader: with a small tail only the end of the record is read', transcriptLines(big, ['needle'], 1024 * 1024).map((l) => (l.includes('last') ? 'last' : 'first')).join(','), 'last');
   fs.rmSync(big, { force: true }); }
+{ const { transcriptLines } = await import(`${SRC}/.claude/hooks/common.mjs`);
+  const f = path.join(os.tmpdir(), 'ais-longline.jsonl'); const fd = fs.openSync(f, 'w');
+  fs.writeSync(fd, '{"needle":"early-critic VERDICT: PASS"}\n'); fs.writeSync(fd, JSON.stringify({ type: 'user', image: 'A'.repeat(40 * 1024 * 1024) }) + '\n'); fs.writeSync(fd, JSON.stringify({ type: 'user', image: 'B'.repeat(20 * 1024 * 1024), t: 'tool_use' }) + '\n'); fs.writeSync(fd, '{"needle":"late VERDICT: FAIL é"}\n'); fs.closeSync(fd);
+  const got = transcriptLines(f, ['VERDICT:']); t('transcript reader: lines far apart and around 60 MB of image data are all found', got.length === 2 && got[0].includes('early-critic') && got[1].includes('late'), true);
+  t('transcript reader: a 40 MB line that matches is returned whole', transcriptLines(f, ['AAAA'])[0].length > 40 * 1024 * 1024, true);
+  fs.rmSync(f, { force: true }); }
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -826,19 +826,26 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   const build = (o = {}) => {
     fs.rmSync(path.join(T, 'docs/design'), { recursive: true, force: true }); fs.rmSync(path.join(T, 'sites'), { recursive: true, force: true });
     fs.mkdirSync(path.join(D, 'shots'), { recursive: true }); fs.mkdirSync(path.join(T, 'sites/nuit'), { recursive: true });
-    fs.writeFileSync(path.join(T, 'sites/nuit/index.html'), '<div class="hero-x1 band-x2 card-x3">x</div>');
+    const css = (names, far) => names.map((n) => `.${n}{display:block}`).join('\n') + (far ? '\n@keyframes zz{from{opacity:0}to{opacity:1}}\n:root{--aa:#111;--bb:#eda43a}' : '\n@keyframes rise{from{opacity:0}to{opacity:1}}\n:root{--ink:#111;--amber:#eda43a;--cream:#f5ebd9}');
+    const shared = ['hero-x1', 'band-x2', 'card-x3', 'sect-a', 'sect-b', 'sect-c', 'grid-d', 'chip-e', 'badge-f', 'title-g'];
+    const mine = o.farBase ? ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10'] : shared;
+    fs.writeFileSync(path.join(T, 'sites/nuit/index.html'), `<style>${css(mine, o.farBase)}</style><div class="${mine.slice(0, 3).join(' ')}">x</div>${o.noMotion ? '' : '<script>new IntersectionObserver(()=>{});</script>'}`);
+    fs.mkdirSync(path.join(D, 'BASE'), { recursive: true }); fs.writeFileSync(path.join(D, 'BASE/index.html'), `<style>${css(shared)}</style><div class="hero-x1 band-x2 card-x3">base</div><script>new IntersectionObserver(()=>{});</script>${'<!-- filler -->'.repeat(300)}`); fs.writeFileSync(path.join(D, 'BASE/SOURCE.md'), 'url: https://gallery.example/base-1\n');
+    if (o.reusedBase) { fs.mkdirSync(path.join(T, 'docs/design/old2/BASE'), { recursive: true }); fs.writeFileSync(path.join(T, 'docs/design/old2/BASE/SOURCE.md'), 'url: https://gallery.example/base-1\n'); }
+    if (!o.noFilm) for (let i = 1; i <= 4; i++) fs.writeFileSync(path.join(D, `shots/film-d-0${i}.png`), png(1440, 900)); if (!o.noFilm) for (let i = 1; i <= 3; i++) fs.writeFileSync(path.join(D, `shots/film-m-0${i}.png`), png(390, 844));
     fs.writeFileSync(path.join(D, 'shots/phone.png'), png(o.noPhone ? 1000 : 390, 3000)); fs.writeFileSync(path.join(D, 'shots/desktop.png'), png(1440, 3000));
     const ref = (k, u, l) => `- ${k} | ${u} | ${l} | great bakery sites show the products first with big photographs | take the product-first grid and the warm tone for ours\n`;
     fs.writeFileSync(path.join(D, 'REFERENCES.md'), '# refs\n' + urls.map((u, i) => ref(i < (o.neigh ? 3 : 6) ? 'same' : 'neighbor', u, i < 2 ? 'local' : '-')).join('') + (o.neigh ? ref('neighbor', 'https://extra.example/', '-') : ''));
     fs.writeFileSync(path.join(D, 'CONCEPT.md'), `Direction: a night bakery run by a family, the cat that guards the ovens. bakeone croissanttown panaderia masamadre pastelnoir hornolocal each lent one idea (product grid, warm tone, menu rhythm) and became ours. ${'The page tells the story of the family bakery at night with real photographs and a type pairing built for it. '.repeat(4)}\nDifferent from: yaw, delicias, moritas: none of them has a story spine.\nHue: ink and amber\nFonts: fraunces dm sans\nHero: arch photograph with eyes\nDensity: airy\nOrder: hero menu family visit\n`);
     fs.writeFileSync(path.join(D, 'CONTENT.md'), `Photos: ${o.fewPhotos ? 'sites/nuit/p1.jpg' : [1, 2, 3, 4, 5, 6].map((n) => `sites/nuit/p${n}.jpg`).join(', ')}\nItems: ${o.fewItems ? 3 : 12}\nDesigned assets: cat illustration\n`);
     for (let n = 1; n <= 6; n++) fs.writeFileSync(path.join(T, `sites/nuit/p${n}.jpg`), 'x');
-    fs.writeFileSync(path.join(T, 'docs/TASK.md'), `# Current task\n\nStatus: ${o.status || 'ACTIVE'}\nType: ${o.type || 'DESIGN'}\nDesign: ${o.noDesign ? '' : 'nuit'}\nTrade: bakery\nSite: sites/nuit\n\nTask:\n- nuit page\n\nAllowed paths:\n- sites/**\n- docs/design/**\n\nTools needed:\n- none\n\nRulings applied:\n- 2026-10-24 use the design tools with a critique loop: followed\n\nDone means:\n- [x] it\n\nEvidence:\n- a\n\nReviewer verdict:\n- PASS\n`);
+    fs.writeFileSync(path.join(T, 'docs/TASK.md'), `# Current task\n\nStatus: ${o.status || 'ACTIVE'}\nType: ${o.type || 'DESIGN'}\nDesign: ${o.noDesign ? '' : 'nuit'}\nTrade: bakery\nSite: sites/nuit\nBase: ${o.noBaseLine ? '' : 'https://gallery.example/base-1'}\n\nTask:\n- nuit page\n\nAllowed paths:\n- sites/**\n- docs/design/**\n\nTools needed:\n- none\n\nRulings applied:\n- 2026-10-24 use the design tools with a critique loop: followed\n\nDone means:\n- [x] it\n\nEvidence:\n- a\n\nReviewer verdict:\n- PASS\n`);
     // the record
     const lines = []; let n = 0; const id = () => `t${++n}`;
     const use = (name, input) => { const i = id(); lines.push(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: i, name, input }] } })); return i; };
     const res = (i, text) => lines.push(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: i, content: text }] } }));
     for (const sk of (o.skills || ['impeccable', 'taste-skill', 'frontend-design'])) res(use('Skill', { skill: sk }), 'ok');
+    if (!o.baseNotFetched) res(use('mcp__playwright__browser_navigate', { url: 'https://gallery.example/base-1' }), 'ok');
     for (const u of urls.slice(0, o.opened ?? 6)) res(use('mcp__playwright__browser_navigate', { url: u }), 'ok');
     use('Write', { file_path: path.join(T, 'sites/nuit/index.html'), content: 'v1' });
     const crit = (v) => res(use('Agent', { subagent_type: 'design-critic', prompt: 'review' }), o.badCritic ? v.replace(/^GARBAGE-CASE.*\n/m, '') : v);
@@ -864,6 +871,12 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('design gate: page changed after the last PASS -> refused', has({ editAfter: true }, 'open both renders|changed after'), true);
   t('design gate: builder never looked at the renders -> refused', has({ noLook: true }, 'open both renders yourself'), true);
   t('design gate: critic skipped a required line -> refused', has({ badCritic: true }, 'missing a required line'), true);
+  t('design gate: no Base line on the card -> refused', has({ noBaseLine: true }, 'Base:'), true);
+  t('design gate: the base design was never fetched -> refused', has({ baseNotFetched: true }, 'never opened or fetched'), true);
+  t('design gate: page not built from the base code -> refused', has({ farBase: true }, 'does not look built from the base'), true);
+  t('design gate: the same base used for another site -> refused', has({ reusedBase: true }, 'already used'), true);
+  t('design gate: a still page with no motion -> refused', has({ noMotion: true }, 'motion'), true);
+  t('design gate: no scroll filmstrip -> refused', has({ noFilm: true }, 'filmstrip'), true);
   t('design gate: a BUILD card is not gated', (() => { build({ type: 'BUILD' }); return designGate(T, tp); })(), null);
   // concept too close to an earlier concept
   tp = build(); fs.mkdirSync(path.join(T, 'docs/design/old'), { recursive: true }); fs.writeFileSync(path.join(T, 'docs/design/old/CONCEPT.md'), 'Hue: ink and amber\nFonts: fraunces dm sans\nHero: arch photograph with eyes\nDensity: airy\nOrder: hero menu family visit\n');

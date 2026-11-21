@@ -27,3 +27,5 @@ GARBAGE-CASE: <the argument> ; holds | does not hold
 VERDICT: PASS | FAIL
 
 Above those lines, list concrete fixes (what to change, where), most important first. Do not edit or create files. Do not suggest work outside this page.
+
+When docs/design/<name>/shots/ contains film-*.png frames (a scroll filmstrip), also read them. Judge the motion and scroll choreography: do the frames change composition, depth and focus as the page scrolls, or only fade? A page whose frames show a flat, static layout fails as "still". When the folder has BASE/, check the page was adapted from it (kept structure and motion, new content) and not a near-copy with only words changed. These two checks apply only when the frames or BASE exist; older pages are judged as before.

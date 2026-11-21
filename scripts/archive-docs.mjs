@@ -9,9 +9,9 @@ const append = (f, text) => { if (!text) return; const p = doc(f); const head = 
 const days = (d) => (Date.now() - Date.parse(d)) / 864e5; const out = [];
 // NEXT: finished items. Two shapes: list lines like "1. (DONE ...)" and paragraph entries (separated by blank lines) whose heading says CLOSED, DONE, RESOLVED or COMPLETED.
 { const t = read('NEXT.md'); if (t) {
-  const isDone = (b) => /^\s*(?:\d+\.|-)\s*\((?:DONE|done)/.test(b) || /\b(?:CLOSED|DONE|RESOLVED|COMPLETED)\b/.test(b.trim().slice(0, 220));
+  const isDone = (b) => !/^#/.test(b.trim()) && /^\s*(?:\d+\.|-)\s*\((?:DONE|done)/.test(b) || /\b(?:CLOSED|DONE|RESOLVED|COMPLETED)\b/.test(b.trim().slice(0, 220));
   const blocks = t.split(/\n\s*\n/); const keep = [], gone = [];
-  blocks.forEach((b, i) => { if (i === 0 && /^#/.test(b.trim())) { keep.push(b); return; } const lines = b.split('\n'); const done = lines.filter((l) => /^\s*(?:\d+\.|-)\s*\((?:DONE|done)/i.test(l)); if (lines.length > 1 && done.length) { gone.push(done.join('\n')); keep.push(lines.filter((l) => !done.includes(l)).join('\n')); } else (isDone(b) ? gone : keep).push(b); });
+  blocks.forEach((b) => { const lines = b.split('\n'); const done = lines.filter((l) => /^\s*(?:\d+\.|-)\s*\((?:DONE|done)/i.test(l)); if (lines.length > 1 && done.length) { gone.push(done.join('\n')); keep.push(lines.filter((l) => !done.includes(l)).join('\n')); } else (isDone(b) ? gone : keep).push(b); });
   if (gone.length) { fs.writeFileSync(doc('NEXT.md'), keep.filter((b) => b.trim()).join('\n\n') + '\n'); append('NEXT-ARCHIVE.md', gone.join('\n\n')); out.push(`NEXT.md: ${gone.length} finished items archived`); } } }
 // FIXED and RULINGS: dated bullet lines older than a cutoff
 const dated = (name, cutoff, stub) => { const t = read(name); if (!t) return; const keep = [], gone = []; for (const l of t.split('\n')) { const m = l.match(/^\s*-\s*(\d{4}-\d{2}-\d{2})\b/); if (m && days(m[1]) > cutoff && l.length > (stub ? 200 : 0)) { gone.push(l); keep.push(stub ? `${l.slice(0, 160).trimEnd()}… (full text: docs/${name.replace('.md', '')}-ARCHIVE.md)` : null); } else keep.push(l); }

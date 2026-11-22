@@ -113,11 +113,14 @@ export function designGate(root, transcriptPath) {
   // 4. renders: phone and desktop, seen by the critic
   const shots = path.join(dir, 'shots'); let files = []; try { files = fs.readdirSync(shots).filter((f) => /\.png$/i.test(f)); } catch { /* none */ }
   const dims = files.map((f) => ({ f, ...(pngSize(path.join(shots, f)) || { w: 0, h: 0 }) }));
+  if (sys.designBaseRequired === true) {
   const filmD = dims.filter((d) => /^film-/i.test(d.f) && d.w >= 1200).length, filmM = dims.filter((d) => /^film-/i.test(d.f) && d.w > 0 && d.w <= 500).length;
   if (filmD < 4 || filmM < 3) return `docs/design/${slug}/shots/ needs a scroll filmstrip so the page's motion can be judged: at least 4 desktop and 3 phone frames named film-*.png. Make them with: node ~/my-ai-system/scripts/filmstrip.mjs <page> docs/design/${slug}/shots`;
+  }
   const mainDims = dims.filter((d) => !/^film-/i.test(d.f));
   if (!mainDims.some((d) => d.w > 0 && d.w <= 500) || !mainDims.some((d) => d.w >= 1200)) return `docs/design/${slug}/shots/ needs PNG renders of the finished page: one at phone width (500px or less) and one at desktop width (1200px or more), full page. Take them with the hidden browser.`;
 
+  if (sys.designBaseRequired === true) { // off by default: starting from a gallery template produced the worst pages so far
   // 4b. built from real code, with real motion, and filmed
   const base = field(card, 'Base'); const baseDir = path.join(dir, 'BASE');
   if (!/^https?:\/\//i.test(base)) return 'The card needs a line "Base: <link>": the curated, top-rated design (from a gallery that offers its code, see docs/design/SOURCES.md) you are adapting. Do not start from a blank file. Pick the best fit for this business\'s mood and trade, fetch its real source, and adapt it.';
@@ -130,7 +133,7 @@ export function designGate(root, transcriptPath) {
   if (bt.size && shared / Math.min(bt.size, pt.size || 1) < 0.2) return `The page does not look built from the base (${Math.round(100 * shared / Math.min(bt.size, pt.size || 1))}% of its structure and style names match). Start from the base's real code: keep its structure, class names, motion and craft where they work, and replace the content, colours, photos and language for this business.`;
   const motionHits = MOTION.filter((r) => r.test(siteDirTxt)).length;
   if (motionHits < 2) return 'The page has almost no motion or depth (it needs at least two of: scroll-triggered or scroll-driven animation, keyframe animation, smooth scrolling, sticky or layered scenes, 3D or shader graphics, view transitions). A still page is not acceptable. Keep the base design\'s motion, or build it with a motion library.';
-
+  }
   // 5. layout not repeated
   let site = path.resolve(root, siteRaw); try { if (fs.statSync(site).isDirectory()) site = path.join(site, 'index.html'); } catch { return `The Site path on the card (${siteRaw}) does not exist.`; }
   const dirs = Array.isArray(sys.designSitesDirs) ? sys.designSitesDirs : [];

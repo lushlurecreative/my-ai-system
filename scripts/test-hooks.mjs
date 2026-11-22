@@ -820,7 +820,7 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
 {
   const { designGate } = await import(`${SRC}/.claude/hooks/design-gate.mjs`);
   const png = (w, h) => { const b = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b); b.writeUInt32BE(13, 8); b.write('IHDR', 12); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); return b; };
-  const D = path.join(T, 'docs/design/nuit'); const sys0 = JSON.stringify({ ...(() => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8')); } catch { return {}; } })(), designGate: true, designPaths: ['**/sites/**'], designSitesDirs: [] }) + '\n'; fs.writeFileSync(path.join(T, '.claude/system.json'), sys0);
+  const D = path.join(T, 'docs/design/nuit'); const sys0 = JSON.stringify({ ...(() => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8')); } catch { return {}; } })(), designGate: true, designBaseRequired: true, designPaths: ['**/sites/**'], designSitesDirs: [] }) + '\n'; fs.writeFileSync(path.join(T, '.claude/system.json'), sys0);
   const urls = ['https://bakeone.com/', 'https://croissanttown.com/menu', 'https://panaderia-luna.ec/', 'https://pastelnoir.co/', 'https://masamadre.shop/', 'https://hornolocal.ec/'];
   const verdictTxt = (v) => `Fix the hero.\nVIEWED: phone.png, desktop.png\nTRADE-RELEVANCE: ok, all bakeries\nRULINGS: checked, kept\nPAIRWISE: Sheet A; three differences; clearly better\nGARBAGE-CASE: thin; does not hold\nVERDICT: ${v}`;
   const build = (o = {}) => {
@@ -965,5 +965,10 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   const got = transcriptLines(f, ['VERDICT:']); t('transcript reader: lines far apart and around 60 MB of image data are all found', got.length === 2 && got[0].includes('early-critic') && got[1].includes('late'), true);
   t('transcript reader: a 40 MB line that matches is returned whole', transcriptLines(f, ['AAAA'])[0].length > 40 * 1024 * 1024, true);
   fs.rmSync(f, { force: true }); }
+{ const { designGate } = await import(`${SRC}/.claude/hooks/design-gate.mjs`); // base-first is off unless a project turns it on
+  const cur = JSON.parse(fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8')); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ ...cur, designBaseRequired: false }) + '\n');
+  const rg = (o) => { try { return designGate(T, path.join(os.tmpdir(), 'ais-design-transcript.jsonl')); } catch { return 'crash'; } };
+  t('design gate: with base-first off, a missing Base line is not a reason to refuse', /Base:/.test(String(rg()) ), false);
+  fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify(cur) + '\n'); }
 t('MASTER-CHAT.md exists in the master and is not installed into projects', fs.existsSync(path.join(SRC, 'MASTER-CHAT.md')) && !fs.existsSync(path.join(T, 'MASTER-CHAT.md')), true);
 fs.rmSync(T, { recursive: true, force: true }); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -54,8 +54,8 @@ export function parseReferences(text) {
 }
 
 // Returns null when the design work is proven, else one plain instruction naming what is missing.
-export function designGate(root, transcriptPath) {
-  const sys = system(root); const card = taskCardText(root); const t = readTask(root);
+export function designGate(root, transcriptPath, opts = {}) {
+  const sys = system(root); const card = opts.card ?? taskCardText(root); const t = opts.card ? { type: 'DESIGN' } : readTask(root);
   if (t.type !== 'DESIGN') return null;
   const minSkills = Number(sys.designMinSkills) || 3; const minRefs = Number(sys.designMinReferences) || 6;
   const patterns = (Array.isArray(sys.designSkillPatterns) && sys.designSkillPatterns.length ? sys.designSkillPatterns : DEFAULT_SKILLS).map((x) => String(x).toLowerCase());

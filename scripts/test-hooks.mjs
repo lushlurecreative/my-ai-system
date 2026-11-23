@@ -878,6 +878,20 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('design gate: a still page with no motion -> refused', has({ noMotion: true }, 'motion'), true);
   t('design gate: no scroll filmstrip -> refused', has({ noFilm: true }, 'filmstrip'), true);
   t('design gate: a BUILD card is not gated', (() => { build({ type: 'BUILD' }); return designGate(T, tp); })(), null);
+  // automatic pipelines: the same gate, fed by the pipeline's own evidence file
+  { const cli = (o = {}) => { build(); fs.mkdirSync(path.join(D, 'refs'), { recursive: true });
+      const big = (w) => Buffer.concat([png(w, 900), Buffer.alloc(8000)]);
+      urls.forEach((u, i) => { if (!(o.missingShot && i === 0)) fs.writeFileSync(path.join(D, `refs/0${i + 1}.png`), big(1440)); });
+      fs.writeFileSync(path.join(D, 'EVIDENCE.json'), JSON.stringify({ trade: 'bakery', site: 'sites/nuit', rulings: ['2026-10-24 use the design tools with a critique loop: followed'], skills: o.fewSkills ? ['impeccable'] : ['impeccable', 'taste-skill', 'frontend-design'],
+        opened: urls.map((u, i) => ({ url: u, screenshot: `docs/design/nuit/refs/0${i + 1}.png` })), critics: [verdictTxt('FAIL'), verdictTxt(o.lastFail ? 'FAIL' : 'PASS')], edits: o.noEdit ? [] : [{ after_round: 1, file: 'index.html' }], viewed: ['shots/phone.png', 'shots/desktop.png'] }));
+      const keep = fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8'); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ ...JSON.parse(keep), designBaseRequired: false }) + '\n');
+      try { return execSync(`node "${SRC}/scripts/design-check.mjs" "${T}" nuit`, { encoding: 'utf8' }); } catch (e) { return String(e.stdout || ''); } finally { fs.writeFileSync(path.join(T, '.claude/system.json'), keep); } };
+    t('pipeline check: complete evidence from the pipeline -> proven', /^PROVEN/.test(cli()), true);
+    t('pipeline check: a reference with no screenshot on disk -> refused', /REFUSED.*screenshot/.test(cli({ missingShot: true })), true);
+    t('pipeline check: too few design skills -> refused', /REFUSED.*design skill/.test(cli({ fewSkills: true })), true);
+    t('pipeline check: critic last verdict FAIL -> refused', /REFUSED.*FAIL/.test(cli({ lastFail: true })), true);
+    t('pipeline check: no page change between critic rounds -> refused', /REFUSED.*No change to the page/.test(cli({ noEdit: true })), true);
+    t('pipeline check: no evidence file -> refused', (() => { build(); try { fs.rmSync(path.join(D, 'EVIDENCE.json'), { force: true }); return execSync(`node "${SRC}/scripts/design-check.mjs" "${T}" nuit`, { encoding: 'utf8' }); } catch (e) { return String(e.stdout || ''); } })().startsWith('REFUSED'), true); }
   // concept too close to an earlier concept
   tp = build(); fs.mkdirSync(path.join(T, 'docs/design/old'), { recursive: true }); fs.writeFileSync(path.join(T, 'docs/design/old/CONCEPT.md'), 'Hue: ink and amber\nFonts: fraunces dm sans\nHero: arch photograph with eyes\nDensity: airy\nOrder: hero menu family visit\n');
   t('design gate: concept nearly the same as an earlier one -> refused', /too close/.test(designGate(T, tp) || ''), true);

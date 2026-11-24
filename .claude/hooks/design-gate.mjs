@@ -32,12 +32,12 @@ const norm = (u) => String(u).toLowerCase().replace(/^https?:\/\//, '').replace(
 // Layout fingerprint of a page: the set of class names it uses. Compared with earlier sites to refuse a repeated layout.
 export const skeleton = (html) => { const s = new Set(); for (const m of String(html).matchAll(/class\s*=\s*["']([^"']+)["']/gi)) for (const c of m[1].split(/\s+/)) if (c) s.add(c.toLowerCase()); return s; };
 export const jaccard = (a, b) => { if (!a.size || !b.size) return 0; let n = 0; for (const x of a) if (b.has(x)) n++; return n / (a.size + b.size - n); };
-function priorSites(root, dirs, exclude) {
+function priorSites(root, dirs, exclude, selfKeys = []) {
   const out = [];
   for (const d of dirs) {
     const base = path.resolve(root, d); let names = []; try { names = fs.readdirSync(base); } catch { continue; }
     const cands = [path.join(base, 'index.html'), ...names.map((n) => path.join(base, n, 'index.html'))];
-    for (const f of cands) { try { const st = fs.statSync(f); if (path.resolve(f) !== exclude) out.push({ f, m: st.mtimeMs }); } catch { /* none */ } }
+    for (const f of cands) { try { const st = fs.statSync(f); const own = path.basename(path.dirname(f)).toLowerCase(); if (path.resolve(f) !== exclude && !selfKeys.some((k) => own === k || own.startsWith(k + '-') || own.startsWith(k + '_'))) out.push({ f, m: st.mtimeMs }); } catch { /* none */ } }
   }
   return out.sort((a, b) => b.m - a.m).slice(0, 40).map((x) => x.f);
 }
@@ -147,7 +147,8 @@ export function designGate(root, transcriptPath, opts = {}) {
   const dirs = Array.isArray(sys.designSitesDirs) ? sys.designSitesDirs : [];
   if (dirs.length) {
     const mine = skeleton(fs.readFileSync(site, 'utf8')); let worst = { s: 0, f: '' };
-    for (const f of priorSites(root, dirs, path.resolve(site))) { let h = ''; try { h = fs.readFileSync(f, 'utf8'); } catch { continue; } const s = jaccard(mine, skeleton(h)); if (s > worst.s) worst = { s, f }; }
+    const selfKeys = [...new Set([slug, path.basename(path.dirname(site))].map((x) => String(x).toLowerCase().split(/[-_ ]/)[0]).filter((x) => x.length >= 4))]; // a business is never compared with its own earlier page: revising it is the point
+    for (const f of priorSites(root, dirs, path.resolve(site), selfKeys)) { let h = ''; try { h = fs.readFileSync(f, 'utf8'); } catch { continue; } const s = jaccard(mine, skeleton(h)); if (s > worst.s) worst = { s, f }; }
     if (worst.s > 0.5) return `This page repeats the layout of an earlier site (${Math.round(worst.s * 100)}% of its structure matches ${rel(worst.f)}). Design a different composition for this business, then render and review again.`;
   }
 

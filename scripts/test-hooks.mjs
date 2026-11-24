@@ -919,6 +919,8 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   tp = build(); fs.mkdirSync(path.join(T, 'prior/yaw'), { recursive: true }); fs.writeFileSync(path.join(T, 'prior/yaw/index.html'), '<div class="hero-x1 band-x2 card-x3">y</div>');
   fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ ...JSON.parse(sys0), designSitesDirs: ['prior'] }) + '\n');
   t('design gate: same page structure as an earlier site -> refused', /repeats the layout/.test(designGate(T, tp) || ''), true);
+  fs.mkdirSync(path.join(T, 'prior/nuit-old'), { recursive: true }); fs.writeFileSync(path.join(T, 'prior/nuit-old/index.html'), '<div class="hero-x1 band-x2 card-x3">old</div>'); fs.rmSync(path.join(T, 'prior/yaw'), { recursive: true, force: true });
+  t('design gate: the same business\'s own earlier page is not a look-alike reason (revising it is the point)', /repeats the layout/.test(designGate(T, tp) || ''), false);
   fs.writeFileSync(path.join(T, '.claude/system.json'), sys0); fs.rmSync(path.join(T, 'prior'), { recursive: true, force: true });
   // the hooks around the gate
   tp = build({ opened: 2 }); // unproven record, card ACTIVE DESIGN

@@ -107,11 +107,12 @@ export function designGate(root, transcriptPath, opts = {}) {
   }
   // content floor: a page cannot be better than what it is made from
   const minPhotos = Number.isFinite(sys.designMinPhotos) ? sys.designMinPhotos : 6; const minItems = Number.isFinite(sys.designMinItems) ? sys.designMinItems : 8;
-  const mc = need('CONTENT.md', 'list what the page is made from: "Photos: <comma-separated paths of the business\'s own photographs>", "Items: <number of real, verified products or services>", and "Designed assets: <illustration, pattern or other labelled non-photo material, or none>".'); if (mc) return mc;
+  const mc = need('CONTENT.md', 'list what the page is made from: "Photos: <comma-separated paths of the business\'s own photographs>", optionally "Videos: <paths of its own video clips>" (they count toward the photo minimum), "Items: <number of real, verified products or services>", and "Designed assets: <illustration, pattern or other labelled non-photo material, or none>".'); if (mc) return mc;
   const content = fs.readFileSync(path.join(dir, 'CONTENT.md'), 'utf8');
   const photoPaths = ((content.match(/^\s*Photos:\s*(.+)$/im) || [])[1] || '').split(',').map((x) => x.trim()).filter(Boolean).filter((x) => fs.existsSync(path.resolve(root, x)));
+  const videoPaths = ((content.match(/^\s*Videos:\s*(.+)$/im) || [])[1] || '').split(',').map((x) => x.trim()).filter(Boolean).filter((x) => fs.existsSync(path.resolve(root, x)));
   const itemsN = Number(((content.match(/^\s*Items:\s*(\d+)/im) || [])[1])) || 0;
-  if ((photoPaths.length < minPhotos || itemsN < minItems) && !/^Material waived:\s*\S/mi.test(card)) return `Not enough real material for a page that can look good: ${photoPaths.length} of ${minPhotos} required own photographs found on disk, ${itemsN} of ${minItems} required real items. Do not pad it with stock or invented content. Stop on this business, record it as waiting for more photographs and items from the business, and tell Shaun in plain words which business and what is missing.`;
+  if (((photoPaths.length + videoPaths.length) < minPhotos || itemsN < minItems) && !/^Material waived:\s*\S/mi.test(card)) return `Not enough real material for a page that can look good: ${photoPaths.length} photographs and ${videoPaths.length} videos found on disk (${minPhotos} photographs or videos in total are required), ${itemsN} of ${minItems} required real items. Do not pad it with stock or invented content. Stop on this business, record it as waiting for more photographs and items from the business, and tell Shaun in plain words which business and what is missing.`;
 
   // 4. renders: phone and desktop, seen by the critic
   const shots = path.join(dir, 'shots'); let files = []; try { files = fs.readdirSync(shots).filter((f) => /\.png$/i.test(f)); } catch { /* none */ }

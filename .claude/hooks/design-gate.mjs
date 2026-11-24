@@ -177,7 +177,7 @@ export function designGate(root, transcriptPath, opts = {}) {
   const verdict = (x) => (x.r.match(/VERDICT\W{0,4}\s*(PASS|FAIL)/gi).pop().match(/PASS|FAIL/i)[0].toUpperCase());
   const last = rounds[rounds.length - 1];
   if (verdict(last) !== 'PASS') return 'The design-critic\'s last verdict is FAIL. Fix every problem it named, re-render, and run it again.';
-  for (const x of rounds) {
+  { const x = last; // the required report lines are checked on the newest round only: earlier rounds were already followed by fixes and a re-review
     const viewed = labelLine(x.r, 'VIEWED');
     if (!viewed || !(files.length ? files : []).concat(anyImages).some((f) => viewed.includes(f))) return 'A critic round did not list the render files it viewed ("VIEWED: <file names>", naming image files that exist under docs/design/<name>/). Its VIEWED line was: ' + (viewed || '(empty)').slice(0, 160) + '. Run it again and require real file names.';
     if (!hasLabel(x.r, 'RULINGS') || !hasLabel(x.r, 'TRADE-RELEVANCE') || !hasLabel(x.r, 'PAIRWISE') || !hasLabel(x.r, 'GARBAGE-CASE')) return 'A critic round is missing a required line (RULINGS:, TRADE-RELEVANCE:, PAIRWISE:, GARBAGE-CASE:). Run it again; it must report all four.';

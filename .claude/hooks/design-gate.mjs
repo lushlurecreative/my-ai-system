@@ -2,7 +2,7 @@
 // Design gate. A task with Type: DESIGN (anything that decides how a page, site or screen looks) cannot reach DONE unless the session's own record shows the work was really done:
 // same-trade references actually opened, design skills actually run, a concept, phone + desktop renders, and at least two rounds with the independent design-critic, the last one a PASS.
 // The record is the session transcript, which the harness writes; the builder cannot edit it, and what it says about itself on the card does not count.
-import fs from 'node:fs'; import path from 'node:path';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { spawnSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';
 import { readTask, taskCardText, system, globRe, transcriptLines } from './common.mjs';
 
 const DEFAULT_SKILLS = ['impeccable', 'taste', 'frontend-design', 'ui-ux', 'design-', 'polish', 'critique', 'typeset', 'layout', 'colorize', 'animate', 'distill', 'bolder', 'quieter', 'delight', 'overdrive', 'adapt', 'harden'];
@@ -134,6 +134,24 @@ export function designGate(root, transcriptPath, opts = {}) {
   }
   const itemsN = itemsN0 + standItems;
   if (((photoPaths.length + videoPaths.length + standPaths.length) < minPhotos || itemsN < minItems) && !/^Material waived:\s*\S/mi.test(card)) return `Not enough material for a page that can look good: ${photoPaths.length} of the business's own photographs, ${videoPaths.length} videos and ${standPaths.length} labelled stand-ins found on disk (${minPhotos} in total are required), ${itemsN} of ${minItems} required items. If the business's own material is unusable, set "Photo verdict: stand-in" with labelled sample photos and a "Replace later:" list. Never present sample material as the business's own and never invent products or prices.`;
+
+  // photos must be usable: measured, not just described. Blurry, dark and tiny photos cannot be used; the first-screen photo must clear a stricter bar; a photo with a face needs Shaun's approval.
+  if (sys.designPhotoCheck !== false && !/^Material waived:\s*\S/mi.test(card)) {
+    const listOf = (re) => ((content.match(re) || [])[1] || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const own = listOf(/^\s*Photos:\s*(.+)$/im), stand = listOf(/^\s*Stand-in photos:\s*(.+)$/im), vids = listOf(/^\s*Videos:\s*(.+)$/im);
+    const heroRel = ((content.match(/^\s*Hero:\s*(\S.*)$/im) || [])[1] || '').trim();
+    if (!heroRel) return 'CONTENT.md needs "Hero: <the one photo or video that fills the first screen>". The first screen decides the page: it must be a bright, sharp, professional image.';
+    if (![...own, ...stand, ...vids].includes(heroRel)) return `CONTENT.md says the hero is ${heroRel}, but that file is not listed under Photos, Stand-in photos or Videos.`;
+    const script = [path.join(os.homedir(), 'my-ai-system/scripts/photo-check.py'), path.join(root, 'scripts/photo-check.py'), path.join(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/photo-check.py')].find((f) => fs.existsSync(f));
+    if (!script) return 'The photo check tool (scripts/photo-check.py from my-ai-system) is not installed here, so photos cannot be measured. Run the system update, then continue.';
+    const measure = (files, hero) => { if (!files.length) return []; const r = spawnSync('python3', [script, ...(hero ? ['--hero'] : []), ...files.map((f) => path.resolve(root, f))], { encoding: 'utf8', timeout: 120000 }); if (r.error || !r.stdout) return { error: `python3 could not run the photo check (${r.error ? r.error.message : (r.stderr || '').slice(0, 120)}). Install python3 with Pillow and numpy: python3 -m pip install pillow numpy` }; const rows = r.stdout.trim().split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); if (rows[0] && rows[0].error) return { error: `The photo check could not run: ${rows[0].error}` }; return rows; };
+    const isVid = (f) => /\.(mp4|mov|webm|m4v)$/i.test(f);
+    const imgs = [...own, ...stand].filter((f) => fs.existsSync(path.resolve(root, f)) && !isVid(f)); const res = measure(imgs, false); if (res.error) return res.error;
+    const bad = res.filter((x) => x.problems && x.problems.length); if (bad.length) return `These photos are listed as usable but fail the photo check, so they cannot be used: ${bad.slice(0, 4).map((x) => `${path.relative(root, x.file)} (${x.problems[0]})`).join('; ')}${bad.length > 4 ? `; and ${bad.length - 4} more` : ''}. Remove them from CONTENT.md, or replace them with better photos (labelled stand-ins if the business has none).`;
+    const approved = ((content.match(/^\s*People approved:\s*(.+)$/im) || [])[1] || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const faces = res.filter((x) => x.faces > 0 && !approved.includes(path.relative(root, x.file))); if (faces.length) return `These photos show faces and need Shaun's approval before use: ${faces.slice(0, 4).map((x) => path.relative(root, x.file)).join(', ')}. Put them in a "People approved: <paths>" line only after he has approved them for this business; otherwise remove them.`;
+    if (!isVid(heroRel)) { const hr = measure([heroRel], true); if (hr.error) return hr.error; if (hr[0] && hr[0].problems && hr[0].problems.length) return `The first-screen photo ${heroRel} is not good enough: ${hr[0].problems.join('; ')}. The first screen needs one bright, sharp, large professional image. Pick a better one, or use a labelled stand-in.`; if (hr[0] && hr[0].faces > 0 && !approved.includes(heroRel)) return `The first-screen photo ${heroRel} shows a face and needs Shaun's approval.`; }
+  }
 
   // 3a. research before design: every channel the business can have was searched, and every one that exists was actually read
   if (!/^Research waived:\s*\S/mi.test(card)) {

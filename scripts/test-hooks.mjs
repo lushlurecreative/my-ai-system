@@ -1,6 +1,6 @@
 // Proves the guards block what they must and allow what they must. Run: node scripts/test-hooks.mjs
 delete process.env.CLAUDE_PROJECT_DIR; // the project comes from each test's own input
-import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { execSync } from 'node:child_process';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { execSync, spawnSync } from 'node:child_process';
 for (const f of fs.readdirSync(os.tmpdir())) if (/^ais-(stop|agents|reviews)-.*\.count$/.test(f)) fs.rmSync(path.join(os.tmpdir(), f), { force: true }); // leftover counters from an earlier run would skew results
 const SRC = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const T = fs.mkdtempSync(path.join(os.tmpdir(), 'ais-test-')); execSync(`bash "${SRC}/install.sh" "${T}"`, { stdio: 'ignore' }); execSync('git init -q -b main', { cwd: T });
@@ -820,7 +820,7 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
 {
   const { designGate } = await import(`${SRC}/.claude/hooks/design-gate.mjs`);
   const png = (w, h) => { const b = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b); b.writeUInt32BE(13, 8); b.write('IHDR', 12); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); return b; };
-  const D = path.join(T, 'docs/design/nuit'); const sys0 = JSON.stringify({ ...(() => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8')); } catch { return {}; } })(), designGate: true, designBaseRequired: true, designPaths: ['**/sites/**'], designSitesDirs: [] }) + '\n'; fs.writeFileSync(path.join(T, '.claude/system.json'), sys0);
+  const D = path.join(T, 'docs/design/nuit'); const sys0 = JSON.stringify({ ...(() => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8')); } catch { return {}; } })(), designGate: true, designBaseRequired: true, designPhotoCheck: false, designPaths: ['**/sites/**'], designSitesDirs: [] }) + '\n'; fs.writeFileSync(path.join(T, '.claude/system.json'), sys0);
   const avoidUrls = ['https://localpan.ec/', 'https://otrapan.ec/'];
   const urls = ['https://bakeone.com/', 'https://croissanttown.com/menu', 'https://panaderia-luna.ec/', 'https://pastelnoir.co/', 'https://masamadre.shop/', 'https://hornolocal.ec/'];
   const verdictTxt = (v) => `Fix the hero.\nVIEWED: phone.png, desktop.png\nTRADE-RELEVANCE: ok, all bakeries\nRULINGS: checked, kept\nPAIRWISE: Sheet A; three differences; clearly better\nGARBAGE-CASE: thin; does not hold\nANCHORS: resembles the pass anchor; bright photo, big headline, one task, space\nVERDICT: ${v}`;
@@ -879,6 +879,14 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('design gate: only two design skills ran -> refused', has({ skills: ['impeccable', 'taste'] }, 'design skill'), true);
   t('design gate: references listed but not opened -> refused', has({ opened: 3 }, 'actually opened'), true);
   t('design gate: more than two neighbor references -> refused', has({ neigh: true }, 'neighbor'), true);
+  const photoRun = (o2) => { build({}); const mk = spawnSync('python3', ['-c', `import numpy as np\nfrom PIL import Image\nr=np.random.RandomState(1)\nd=${JSON.stringify(path.join(T, 'sites/nuit'))}\nfor i in range(1,7): Image.fromarray(r.randint(0,256,(1000,1000,3)).astype('uint8')).save(d+'/g%d.jpg'%i)\nImage.fromarray((np.linspace(60,200,1000)[None,:,None]*np.ones((1000,1000,3))).astype('uint8')).save(d+'/soft.jpg')\nImage.fromarray((r.randint(0,256,(1000,1000,3))*0.08).astype('uint8')).save(d+'/dark.jpg')`]); if (mk.status !== 0) return 'python-missing'; const list = [1, 2, 3, 4, 5, 6].map((n) => `sites/nuit/g${n}.jpg`); if (o2.soft) list[5] = 'sites/nuit/soft.jpg'; if (o2.hero) list[5] = o2.hero; fs.writeFileSync(path.join(D, 'CONTENT.md'), `Photos: ${list.join(', ')}\nItems: 12\nDesigned assets: cat illustration\n${o2.noHero ? '' : `Hero: ${o2.hero || 'sites/nuit/g1.jpg'}\n`}`); const cur = JSON.parse(fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8')); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ ...cur, designPhotoCheck: true }) + '\n'); const r = designGate(T, path.join(os.tmpdir(), 'ais-design-transcript.jsonl')) || ''; fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ ...cur, designPhotoCheck: false }) + '\n'); return r; };
+  const pyOk = spawnSync('python3', ['-c', 'import numpy, PIL']).status === 0;
+  if (pyOk) {
+    t('photo check: sharp bright photos with a hero -> no photo problem', /photo check|not good enough|first-screen|Hero:/.test(photoRun({})), false);
+    t('photo check: a blurry listed photo -> refused', /soft or blurry/.test(photoRun({ soft: true })), true);
+    t('photo check: a dark first-screen photo -> refused', /too dark/.test(photoRun({ hero: 'sites/nuit/dark.jpg' })), true);
+    t('photo check: no Hero line -> refused', /Hero:/.test(photoRun({ noHero: true })), true);
+  }
   t('design gate: borrowing from a local competitor -> refused', has({ localBorrow: true }, 'local competitor'), true);
   t('design gate: no local competitors listed as what to avoid -> refused', has({ noAvoid: true }, 'NOT to do'), true);
   t('design gate: critic round without the anchors line -> refused', (() => { const r = designGate(T, build({ badCritic: false, noAnchors: true })); return typeof r === 'string' && /ANCHORS/.test(r); })(), true);

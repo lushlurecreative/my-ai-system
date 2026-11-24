@@ -27,6 +27,8 @@ You are the builder of this project, not an assistant waiting for orders. Shaun 
 
 ## Persistence
 
+
+**Held cards and approved work.** If a check keeps a task card from closing (it refuses DONE and you cannot clear it from here), set `Status: BLOCKED` on that card with one line saying what blocks it, so other approved work can start. Reopen it when the blocker clears. Never leave approved work waiting behind a held card. And work Shaun has already approved is never asked for again: it starts, or goes on docs/NEXT.md with the reason it could not start. A permission prompt, a blocked helper or an open card is a reason to take the next route, not a reason to ask him to say yes again.
 When Shaun tells you to remember something, save it in Claude's memory folder (`~/.claude/projects/<project>/memory/`, the one place outside the project you may write) and also in `docs/RULINGS.md`. Never ask him to do it.
 
 When a task hits a problem, research it, investigate it, find a solution and implement it. Do not stop at the first obstacle. These are not blockers: tool choice, debugging approach, prioritization, reading code, running tests, choosing among approaches, a command that failed, a page that would not load. Try at least two different approaches before calling anything blocked, and say what you tried. Real blockers: a login or credential only Shaun has, spending money, a protected file, a business decision, information that cannot be discovered. A hook blocks "want me to…?" endings while a task is active.

@@ -20,7 +20,7 @@ export function readTranscript(tp) {
       if (d.type === 'assistant' && Array.isArray(c)) for (const b of c) if (b.type === 'tool_use') uses.push({ id: b.id, name: b.name, input: b.input || {}, i: uses.length });
       if (d.type === 'user' && Array.isArray(c)) for (const b of c) if (b.type === 'tool_result') results.set(b.tool_use_id, textOf(b.content));
       // A critic that ran in the background answers later, as a message, not as the tool's own result. Take those too, but never from the assistant's own words (it could write a verdict itself).
-      if (d.type !== 'assistant' && l.includes('VERDICT:')) { const txt = strings(d).join('\n'); if (/VERDICT:\s*(PASS|FAIL)/i.test(txt) && /VIEWED:/i.test(txt)) delivered.push({ text: txt, ri: uses.length }); }
+      if (d.type !== 'assistant' && l.includes('VERDICT:')) { const txt = strings(d).join('\n'); if (/VERDICT\W{0,4}\s*(PASS|FAIL)/i.test(txt) && /VIEWED/i.test(txt)) delivered.push({ text: txt, ri: uses.length }); }
     }
   } catch { return null; }
   return { uses, results, delivered };
@@ -46,6 +46,8 @@ function priorSites(root, dirs, exclude) {
 const readTree = (dir, exts, max = 400000) => { let out = ''; const walk = (d) => { let es = []; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const e of es) { if (out.length > max) return; const f = path.join(d, e.name); if (e.isDirectory()) { if (!/^(node_modules|\.git|assets|images|img|fonts)$/i.test(e.name)) walk(f); } else if (exts.test(e.name)) { try { out += '\n' + fs.readFileSync(f, 'utf8'); } catch { /* skip */ } } } }; walk(dir); return out; };
 export const codeTokens = (txt) => { const s = new Set(); for (const m of String(txt).matchAll(/class\s*=\s*["']([^"']+)["']/gi)) for (const c of m[1].split(/\s+/)) if (c) s.add('c:' + c.toLowerCase()); for (const m of String(txt).matchAll(/\.([a-z_][\w-]{2,})\s*[{,:.\s>+~[]/gi)) s.add('c:' + m[1].toLowerCase()); for (const m of String(txt).matchAll(/@keyframes\s+([\w-]+)/gi)) s.add('k:' + m[1].toLowerCase()); for (const m of String(txt).matchAll(/--([\w-]+)\s*:/g)) s.add('v:' + m[1].toLowerCase()); return s; };
 const MOTION = [/@keyframes/, /animation-timeline|scroll-timeline/, /IntersectionObserver/, /ScrollTrigger|gsap/i, /lenis/i, /framer-motion|motion\.dev|from\s+["']motion/i, /three(?:\.js|\/|\.module)|\bogl\b|webgl/i, /view-transition/, /position:\s*sticky/, /scroll-snap/];
+const labelLine = (txt, label) => (String(txt).match(new RegExp('^[\\s>*_\\-#]*\\**\\s*' + label + '\\s*:?\\**\\s*:?\\s*(.+)$', 'im')) || [])[1] || '';
+const hasLabel = (txt, label) => new RegExp('^[\\s>*_\\-#]*\\**\\s*' + label + '\\s*:', 'im').test(String(txt));
 const field = (card, name) => ((card.match(new RegExp(`^${name}:[ \\t]*(.+)$`, 'mi')) || [])[1] || '').trim();
 export function parseReferences(text) {
   const rows = [];
@@ -116,6 +118,7 @@ export function designGate(root, transcriptPath, opts = {}) {
 
   // 4. renders: phone and desktop, seen by the critic
   const shots = path.join(dir, 'shots'); let files = []; try { files = fs.readdirSync(shots).filter((f) => /\.png$/i.test(f)); } catch { /* none */ }
+  const anyImages = (() => { const out = []; const walk = (d) => { let es = []; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const e of es) { if (e.isDirectory()) { if (!/^(BASE|node_modules)$/i.test(e.name)) walk(path.join(d, e.name)); } else if (/\.(png|jpe?g|webp)$/i.test(e.name)) out.push(e.name); } }; walk(dir); return out; })();
   const dims = files.map((f) => ({ f, ...(pngSize(path.join(shots, f)) || { w: 0, h: 0 }) }));
   if (sys.designBaseRequired === true) {
   const filmD = dims.filter((d) => /^film-/i.test(d.f) && d.w >= 1200).length, filmM = dims.filter((d) => /^film-/i.test(d.f) && d.w > 0 && d.w <= 500).length;
@@ -155,18 +158,18 @@ export function designGate(root, transcriptPath, opts = {}) {
   // 6. the independent critic: 2+ rounds, last one PASS, work changed between rounds, final version is the one reviewed
   const launches = uses.filter((u) => (u.name === 'Agent' || u.name === 'Task') && String(u.input.subagent_type || '').toLowerCase() === 'design-critic');
   const arrived = []; const seenTxt = new Set();
-  const addText = (txt) => { const key = txt.replace(/\s+/g, ' ').trim().slice(-600); if (!seenTxt.has(key) && /VERDICT:\s*(PASS|FAIL)/i.test(txt) && /VIEWED:/i.test(txt)) { seenTxt.add(key); arrived.push(txt); } };
+  const addText = (txt) => { const key = txt.replace(/\s+/g, ' ').trim().slice(-600); if (!seenTxt.has(key) && /VERDICT\W{0,4}\s*(PASS|FAIL)/i.test(txt) && /VIEWED/i.test(txt)) { seenTxt.add(key); arrived.push(txt); } };
   for (const u of launches) addText(results.get(u.id) || '');
   for (const dv of delivered) addText(dv.text);
   const rounds = launches.slice(0, arrived.length).map((u, k) => ({ u, r: arrived[k] }));
   if (rounds.length < 2) return `The design-critic has returned ${rounds.length} verdict(s); at least 2 rounds are required (review, fix what it found, review again). Launch it with the Agent tool (subagent_type design-critic), give it the renders in docs/design/${slug}/shots/, REFERENCES.md, CONCEPT.md and the trade.`;
-  const verdict = (x) => (x.r.match(/VERDICT:\s*(PASS|FAIL)/gi).pop().match(/PASS|FAIL/i)[0].toUpperCase());
+  const verdict = (x) => (x.r.match(/VERDICT\W{0,4}\s*(PASS|FAIL)/gi).pop().match(/PASS|FAIL/i)[0].toUpperCase());
   const last = rounds[rounds.length - 1];
   if (verdict(last) !== 'PASS') return 'The design-critic\'s last verdict is FAIL. Fix every problem it named, re-render, and run it again.';
   for (const x of rounds) {
-    const viewed = (x.r.match(/^\s*VIEWED:\s*(.+)$/im) || [])[1] || '';
-    if (!viewed || !files.some((f) => viewed.includes(f))) return 'A critic round did not list the render files it viewed ("VIEWED: <file names>"). Run it again and require that line.';
-    if (!/^\s*RULINGS:/im.test(x.r) || !/^\s*TRADE-RELEVANCE:/im.test(x.r) || !/^\s*PAIRWISE:/im.test(x.r) || !/^\s*GARBAGE-CASE:/im.test(x.r)) return 'A critic round is missing a required line (RULINGS:, TRADE-RELEVANCE:, PAIRWISE:, GARBAGE-CASE:). Run it again; it must report all four.';
+    const viewed = labelLine(x.r, 'VIEWED');
+    if (!viewed || !(files.length ? files : []).concat(anyImages).some((f) => viewed.includes(f))) return 'A critic round did not list the render files it viewed ("VIEWED: <file names>", naming image files that exist under docs/design/<name>/). Its VIEWED line was: ' + (viewed || '(empty)').slice(0, 160) + '. Run it again and require real file names.';
+    if (!hasLabel(x.r, 'RULINGS') || !hasLabel(x.r, 'TRADE-RELEVANCE') || !hasLabel(x.r, 'PAIRWISE') || !hasLabel(x.r, 'GARBAGE-CASE')) return 'A critic round is missing a required line (RULINGS:, TRADE-RELEVANCE:, PAIRWISE:, GARBAGE-CASE:). Run it again; it must report all four.';
   }
   const inSite = (u) => WRITERS.has(u.name) && path.resolve(root, String(u.input.file_path || u.input.notebook_path || '')).startsWith(path.dirname(site));
   const edits = uses.filter(inSite);

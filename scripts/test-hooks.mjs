@@ -887,6 +887,8 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('design gate: a still page with no motion -> refused', has({ noMotion: true }, 'motion'), true);
   t('design gate: no scroll filmstrip -> refused', has({ noFilm: true }, 'filmstrip'), true);
   t('design gate: critic reviews that ran in the background and arrived as messages (indented) are seen', designGate(T, build({ bgCritic: true })), null);
+  t('design gate: critic report in markdown (bold labels, bullets, bold verdict) is read', (() => { const tp2 = build({ bgCritic: true }); const txt = fs.readFileSync(tp2, 'utf8').replace(/  VIEWED:/g, '  - **VIEWED:**').replace(/  VERDICT: PASS/g, '  **VERDICT:** PASS').replace(/  VERDICT: FAIL/g, '  **VERDICT:** FAIL'); fs.writeFileSync(tp2, txt); return designGate(T, tp2); })(), null);
+  t('design gate: renders kept in another subfolder of the design folder still count as viewed', (() => { const tp2 = build({ bgCritic: true }); fs.mkdirSync(path.join(D, 'renders'), { recursive: true }); fs.renameSync(path.join(D, 'shots/phone.png'), path.join(D, 'renders/phone.png')); fs.copyFileSync(path.join(D, 'shots/desktop.png'), path.join(D, 'renders/desktop.png')); fs.writeFileSync(path.join(D, 'shots/film-d-01.png'), png(1440, 900)); return /did not list the render files/.test(designGate(T, tp2) || ''); })(), false);
   t('design gate: a verdict the builder wrote itself is not a critic review', has({ forged: true }, 'at least 2 rounds'), true);
   t('design gate: a BUILD card is not gated', (() => { build({ type: 'BUILD' }); return designGate(T, tp); })(), null);
   // automatic pipelines: the same gate, fed by the pipeline's own evidence file

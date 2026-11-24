@@ -821,8 +821,9 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   const { designGate } = await import(`${SRC}/.claude/hooks/design-gate.mjs`);
   const png = (w, h) => { const b = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b); b.writeUInt32BE(13, 8); b.write('IHDR', 12); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); return b; };
   const D = path.join(T, 'docs/design/nuit'); const sys0 = JSON.stringify({ ...(() => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8')); } catch { return {}; } })(), designGate: true, designBaseRequired: true, designPaths: ['**/sites/**'], designSitesDirs: [] }) + '\n'; fs.writeFileSync(path.join(T, '.claude/system.json'), sys0);
+  const avoidUrls = ['https://localpan.ec/', 'https://otrapan.ec/'];
   const urls = ['https://bakeone.com/', 'https://croissanttown.com/menu', 'https://panaderia-luna.ec/', 'https://pastelnoir.co/', 'https://masamadre.shop/', 'https://hornolocal.ec/'];
-  const verdictTxt = (v) => `Fix the hero.\nVIEWED: phone.png, desktop.png\nTRADE-RELEVANCE: ok, all bakeries\nRULINGS: checked, kept\nPAIRWISE: Sheet A; three differences; clearly better\nGARBAGE-CASE: thin; does not hold\nVERDICT: ${v}`;
+  const verdictTxt = (v) => `Fix the hero.\nVIEWED: phone.png, desktop.png\nTRADE-RELEVANCE: ok, all bakeries\nRULINGS: checked, kept\nPAIRWISE: Sheet A; three differences; clearly better\nGARBAGE-CASE: thin; does not hold\nANCHORS: resembles the pass anchor; bright photo, big headline, one task, space\nVERDICT: ${v}`;
   const build = (o = {}) => {
     fs.rmSync(path.join(T, 'docs/design'), { recursive: true, force: true }); fs.rmSync(path.join(T, 'sites'), { recursive: true, force: true });
     fs.mkdirSync(path.join(D, 'shots'), { recursive: true }); fs.mkdirSync(path.join(T, 'sites/nuit'), { recursive: true });
@@ -835,7 +836,7 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
     if (!o.noFilm) for (let i = 1; i <= 4; i++) fs.writeFileSync(path.join(D, `shots/film-d-0${i}.png`), png(1440, 900)); if (!o.noFilm) for (let i = 1; i <= 3; i++) fs.writeFileSync(path.join(D, `shots/film-m-0${i}.png`), png(390, 844));
     fs.writeFileSync(path.join(D, 'shots/phone.png'), png(o.noPhone ? 1000 : 390, 3000)); fs.writeFileSync(path.join(D, 'shots/desktop.png'), png(1440, 3000));
     const ref = (k, u, l) => `- ${k} | ${u} | ${l} | great bakery sites show the products first with big photographs | take the product-first grid and the warm tone for ours\n`;
-    fs.writeFileSync(path.join(D, 'REFERENCES.md'), '# refs\n' + urls.map((u, i) => ref(i < (o.neigh ? 3 : 6) ? 'same' : 'neighbor', u, i < 2 ? 'local' : '-')).join('') + (o.neigh ? ref('neighbor', 'https://extra.example/', '-') : ''));
+    fs.writeFileSync(path.join(D, 'REFERENCES.md'), '# refs\n' + urls.map((u, i) => ref(i < (o.neigh ? 3 : 6) ? 'same' : 'neighbor', u, '-')).join('') + (o.noAvoid ? '' : avoidUrls.map((u) => ref('avoid', u, 'local')).join('')) + (o.localBorrow ? ref('same', 'https://localborrow.ec/', 'local') : '') + (o.neigh ? ref('neighbor', 'https://extra.example/', '-') : ''));
     fs.writeFileSync(path.join(D, 'CONCEPT.md'), `Direction: a night bakery run by a family, the cat that guards the ovens. bakeone croissanttown panaderia masamadre pastelnoir hornolocal each lent one idea (product grid, warm tone, menu rhythm) and became ours. ${'The page tells the story of the family bakery at night with real photographs and a type pairing built for it. '.repeat(4)}\nDifferent from: yaw, delicias, moritas: none of them has a story spine.\nHue: ink and amber\nFonts: fraunces dm sans\nHero: arch photograph with eyes\nDensity: airy\nOrder: hero menu family visit\n`);
     fs.writeFileSync(path.join(D, 'CONTENT.md'), `Photos: ${o.fewPhotos ? 'sites/nuit/p1.jpg' : [1, 2, 3, 4, 5, 6].map((n) => `sites/nuit/p${n}.jpg`).join(', ')}\nItems: ${o.fewItems ? 3 : 12}\nDesigned assets: cat illustration\n`);
     for (let n = 1; n <= 6; n++) fs.writeFileSync(path.join(T, `sites/nuit/p${n}.jpg`), 'x');
@@ -855,10 +856,10 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
     const res = (i, text) => lines.push(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: i, content: text }] } }));
     for (const sk of (o.skills || ['impeccable', 'taste-skill', 'frontend-design'])) res(use('Skill', { skill: sk }), 'ok');
     if (!o.baseNotFetched) res(use('mcp__playwright__browser_navigate', { url: 'https://gallery.example/base-1' }), 'ok');
-    for (const u of urls.slice(0, o.opened ?? 6)) res(use('mcp__playwright__browser_navigate', { url: u }), 'ok');
+    for (const u of urls.slice(0, o.opened ?? 6).concat(avoidUrls)) res(use('mcp__playwright__browser_navigate', { url: u }), 'ok');
     use('Write', { file_path: path.join(T, 'sites/nuit/index.html'), content: 'v1' });
     const crit = (v) => {
-      const body = o.badCritic ? v.replace(/^GARBAGE-CASE.*\n/m, '') : v;
+      const body = o.noAnchors ? v.replace(/^ANCHORS.*\n/m, '') : (o.badCritic ? v.replace(/^GARBAGE-CASE.*\n/m, '') : v);
       if (o.bgCritic || o.forged) {
         res(use('Agent', { subagent_type: 'design-critic', prompt: 'review', run_in_background: true }), 'Async agent launched successfully.');
         const indented = '[Subagent hand-back] The text below is the final report of a subagent.\n' + body.split('\n').map((x) => '  ' + x).join('\n');
@@ -878,6 +879,9 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('design gate: only two design skills ran -> refused', has({ skills: ['impeccable', 'taste'] }, 'design skill'), true);
   t('design gate: references listed but not opened -> refused', has({ opened: 3 }, 'actually opened'), true);
   t('design gate: more than two neighbor references -> refused', has({ neigh: true }, 'neighbor'), true);
+  t('design gate: borrowing from a local competitor -> refused', has({ localBorrow: true }, 'local competitor'), true);
+  t('design gate: no local competitors listed as what to avoid -> refused', has({ noAvoid: true }, 'NOT to do'), true);
+  t('design gate: critic round without the anchors line -> refused', (() => { const r = designGate(T, build({ badCritic: false, noAnchors: true })); return typeof r === 'string' && /ANCHORS/.test(r); })(), true);
   t('design gate: no phone-width render -> refused', has({ noPhone: true }, 'phone width'), true);
   t('design gate: too little real material -> stop on this business', has({ fewPhotos: true }, 'Not enough material'), true);
   const standIn = (o2) => { build({ fewPhotos: true, fewItems: true }); for (let n = 1; n <= 5; n++) fs.writeFileSync(path.join(T, `sites/nuit/s${n}.jpg`), 'x'); const pg = path.join(T, 'sites/nuit/index.html'); if (o2.label !== false) fs.appendFileSync(pg, '\n<span class="badge">Foto de ejemplo - aqui ira tu foto</span>\n'); fs.writeFileSync(path.join(D, 'CONTENT.md'), `Photos: sites/nuit/p1.jpg\nItems: 3\nDesigned assets: cat illustration\nPhoto verdict: ${o2.verdict || 'mixed'}\n${o2.reason === false ? '' : 'Verdict reason: looked at 14 Instagram photos, all blurry crumb close-ups with dim light, none shows the product\n'}Stand-in photos: ${[1, 2, 3, 4, 5].map((n) => `sites/nuit/s${n}.jpg`).join(', ')}\nStand-in items: 6\n${o2.noReplace ? '' : 'Replace later:\n- hero photo: send a sharp photo of the cat-shaped buns\n- phone number: not found, send the WhatsApp number\n'}`); return designGate(T, path.join(os.tmpdir(), 'ais-design-transcript.jsonl')) || ''; };
@@ -928,9 +932,9 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   // automatic pipelines: the same gate, fed by the pipeline's own evidence file
   { const cli = (o = {}) => { build(); fs.mkdirSync(path.join(D, 'refs'), { recursive: true });
       const big = (w) => Buffer.concat([png(w, 900), Buffer.alloc(8000)]);
-      urls.forEach((u, i) => { if (!(o.missingShot && i === 0)) fs.writeFileSync(path.join(D, `refs/0${i + 1}.png`), big(1440)); });
+      urls.concat(avoidUrls).forEach((u, i) => { if (!(o.missingShot && i === 0)) fs.writeFileSync(path.join(D, `refs/0${i + 1}.png`), big(1440)); });
       fs.writeFileSync(path.join(D, 'EVIDENCE.json'), JSON.stringify({ trade: 'bakery', site: 'sites/nuit', rulings: ['2026-10-24 use the design tools with a critique loop: followed'], skills: o.fewSkills ? ['impeccable'] : ['impeccable', 'taste-skill', 'frontend-design'],
-        opened: urls.map((u, i) => ({ url: u, screenshot: `docs/design/nuit/refs/0${i + 1}.png` })), critics: [verdictTxt('FAIL'), verdictTxt(o.lastFail ? 'FAIL' : 'PASS')], edits: o.noEdit ? [] : [{ after_round: 1, file: 'index.html' }], viewed: ['shots/phone.png', 'shots/desktop.png'] }));
+        opened: urls.concat(avoidUrls).map((u, i) => ({ url: u, screenshot: `docs/design/nuit/refs/0${i + 1}.png` })), critics: [verdictTxt('FAIL'), verdictTxt(o.lastFail ? 'FAIL' : 'PASS')], edits: o.noEdit ? [] : [{ after_round: 1, file: 'index.html' }], viewed: ['shots/phone.png', 'shots/desktop.png'] }));
       const keep = fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8'); fs.writeFileSync(path.join(T, '.claude/system.json'), JSON.stringify({ ...JSON.parse(keep), designBaseRequired: false }) + '\n');
       try { return execSync(`node "${SRC}/scripts/design-check.mjs" "${T}" nuit`, { encoding: 'utf8' }); } catch (e) { return String(e.stdout || ''); } finally { fs.writeFileSync(path.join(T, '.claude/system.json'), keep); } };
     t('pipeline check: complete evidence from the pipeline -> proven', /^PROVEN/.test(cli()), true);

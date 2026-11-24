@@ -53,8 +53,8 @@ const field = (card, name) => ((card.match(new RegExp(`^${name}:[ \\t]*(.+)$`, '
 export function parseReferences(text) {
   const rows = [];
   for (const l of String(text || '').split('\n')) {
-    const m = l.match(/^\s*-\s*(same|neighbou?r)\s*\|\s*(https?:\/\/[^\s|]+)\s*\|\s*(local|-|no)\s*\|\s*([^|]+)\|\s*(.+)$/i);
-    if (m) rows.push({ kind: m[1].toLowerCase().startsWith('s') ? 'same' : 'neighbor', url: m[2], local: m[3].toLowerCase() === 'local', what: m[4].trim(), borrow: m[5].trim() });
+    const m = l.match(/^\s*-\s*(same|neighbou?r|avoid)\s*\|\s*(https?:\/\/[^\s|]+)\s*\|\s*(local|-|no)\s*\|\s*([^|]+)\|\s*(.+)$/i);
+    if (m) rows.push({ kind: m[1].toLowerCase().startsWith('s') ? 'same' : m[1].toLowerCase().startsWith('a') ? 'avoid' : 'neighbor', url: m[2], local: m[3].toLowerCase() === 'local', what: m[4].trim(), borrow: m[5].trim() });
   }
   return rows;
 }
@@ -78,17 +78,18 @@ export function designGate(root, transcriptPath, opts = {}) {
   if (skills.size < minSkills) return `Only ${skills.size} design skill(s) ran in this session${skills.size ? ` (${[...skills].join(', ')})` : ''}; ${minSkills} different ones from the design library are required. Run them with the Skill tool on this design (direction, layout, type and colour, polish, critique), then continue. If the library is not reachable, stop and tell Shaun in plain words; do not substitute your own judgment.`;
 
   // 2. same-trade references, each really opened
-  const miss = need('REFERENCES.md', `list at least ${minRefs} real ${trade} sites you opened, one per line: "- same | <url> | local or - | <what great ${trade} sites do here> | <what you take from it>". Up to 2 may be "neighbor" (a close trade, labelled), never an unrelated trade.`); if (miss) return miss;
+  const miss = need('REFERENCES.md', `list at least ${minRefs} of the BEST ${trade} sites anywhere that you opened, one per line: "- same | <url> | - | <what great ${trade} sites do here> | <what you take from it>". Up to 2 may be "neighbor" (a close trade, labelled), never an unrelated trade. Then list at least 2 of the customer's local competitors as what NOT to do: "- avoid | <url> | local | <what is weak about it> | <what we do instead>". A local competitor is never something to borrow from.`); if (miss) return miss;
   const refs = parseReferences(fs.readFileSync(path.join(dir, 'REFERENCES.md'), 'utf8'));
   const visited = (u) => { const n = norm(u); return uses.some((x) => !READERS.has(x.name) && JSON.stringify(x.input).toLowerCase().includes(n)); };
-  const same = refs.filter((r) => r.kind === 'same'); const neigh = refs.filter((r) => r.kind === 'neighbor');
+  const same = refs.filter((r) => r.kind === 'same'); const neigh = refs.filter((r) => r.kind === 'neighbor'); const avoid = refs.filter((r) => r.kind === 'avoid');
+  const borrowedLocal = [...same, ...neigh].filter((r) => r.local); if (borrowedLocal.length) return `REFERENCES.md borrows from a local competitor (${borrowedLocal[0].url}). Local competitors are weak by default: list them only as "- avoid | <url> | local | <what is weak> | <what we do instead>". Everything you borrow from must be among the best ${trade} sites anywhere (use "-" in the third column).`;
   if (neigh.length > 2) return `REFERENCES.md has ${neigh.length} neighbor references; at most 2 are allowed. The rest must be real ${trade} sites.`;
   const thin = refs.filter((r) => r.what.length < 25 || r.borrow.length < 20); if (thin.length) return `REFERENCES.md: say what each site does and what you take from it (a real sentence each). Incomplete: ${thin.slice(0, 3).map((r) => r.url).join(', ')}.`;
   const hosts = new Set(same.filter((r) => visited(r.url)).map((r) => norm(r.url).split('/')[0]));
   const seen = same.filter((r) => visited(r.url));
   if (seen.length < minRefs) return `Only ${seen.length} same-trade reference(s) in REFERENCES.md were actually opened in this session (need ${minRefs}). Open each ${trade} site with the browser or fetch tool, look at it, and list only the ones you opened. A listed URL that was never opened does not count.`;
   if (hosts.size < Math.min(minRefs, 4)) return `The references come from too few sites (${hosts.size}). Use at least ${Math.min(minRefs, 4)} different sites.`;
-  if (refs.filter((r) => r.local).length < 2) return 'At least 2 references must fit the customer\'s own market (same language, phone-first, local ordering such as WhatsApp). Mark them "local" in REFERENCES.md.';
+  const avoidSeen = avoid.filter((r) => visited(r.url)); if (avoidSeen.length < 2) return `REFERENCES.md needs at least 2 local competitors that you opened, listed as what NOT to do: "- avoid | <url> | local | <what is weak about it> | <what we do instead>". Found ${avoidSeen.length} opened.`;
 
   // 3. concept, different from the last sites
   const m2 = need('CONCEPT.md', 'write the direction for THIS business (the idea drawn from its own world, layout, type, colour, one signature moment) and a section "Different from:" naming at least 3 earlier sites and how this one differs.'); if (m2) return m2;
@@ -240,7 +241,7 @@ export function designGate(root, transcriptPath, opts = {}) {
   { const x = last; // the required report lines are checked on the newest round only: earlier rounds were already followed by fixes and a re-review
     const viewed = labelLine(x.r, 'VIEWED');
     if (!viewed || !(files.length ? files : []).concat(anyImages).some((f) => viewed.includes(f))) return 'A critic round did not list the render files it viewed ("VIEWED: <file names>", naming image files that exist under docs/design/<name>/). Its VIEWED line was: ' + (viewed || '(empty)').slice(0, 160) + '. Run it again and require real file names.';
-    if (!hasLabel(x.r, 'RULINGS') || !hasLabel(x.r, 'TRADE-RELEVANCE') || !hasLabel(x.r, 'PAIRWISE') || !hasLabel(x.r, 'GARBAGE-CASE')) return 'A critic round is missing a required line (RULINGS:, TRADE-RELEVANCE:, PAIRWISE:, GARBAGE-CASE:). Run it again; it must report all four.';
+    if (!hasLabel(x.r, 'RULINGS') || !hasLabel(x.r, 'TRADE-RELEVANCE') || !hasLabel(x.r, 'PAIRWISE') || !hasLabel(x.r, 'GARBAGE-CASE') || !hasLabel(x.r, 'ANCHORS')) return 'A critic round is missing a required line (RULINGS:, TRADE-RELEVANCE:, PAIRWISE:, GARBAGE-CASE:, ANCHORS:). Run it again; it must report all five.';
   }
   const inSite = (u) => WRITERS.has(u.name) && path.resolve(root, String(u.input.file_path || u.input.notebook_path || '')).startsWith(path.dirname(site));
   const edits = uses.filter(inSite);

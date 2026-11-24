@@ -24,6 +24,7 @@ TRADE-RELEVANCE: ok | not ok, <one line>
 RULINGS: checked, <kept or broken, one line>
 PAIRWISE: <closest earlier site>; <closest liked site>; <closest live bar site>; <three differences>; at least as good and not a repeat | repeats an earlier site | visibly worse
 GARBAGE-CASE: <the argument> ; holds | does not hold
+ANCHORS: <open docs/design/anchors/ (README.md and every image) and compare the page's first screen, desktop and phone, with them; say which anchor it most resembles, and whether it reaches the pass anchor on photo quality and brightness, headline scale, one clear task and space>
 VERDICT: PASS | FAIL
 
 Above those lines, list concrete fixes (what to change, where), most important first. Do not edit or create files. Do not suggest work outside this page.
@@ -33,3 +34,6 @@ When docs/design/<name>/shots/ contains film-*.png frames (a scroll filmstrip), 
 Also judge brand fidelity when BRAND.md exists: does the page visibly use the business's own logo and colours, with strong contrast, as the starting point of the design? A page that ignores the business's identity fails.
 
 Stand-in material: if CONTENT.md says the photo verdict is mixed or stand-in, open the page and check three things. (1) Every sample photo carries a visible label saying it is an example to be replaced, and none is passed off as the business's own. (2) The sample photos fit the trade and are sharp, well composed and good enough that the owner sees a site worth having. (3) Missing facts (phone, prices, address) are honest placeholders, not invented. Any failure of these is a FAIL.
+
+
+Anchors: before you judge, read docs/design/anchors/README.md and open every image there. They are Shaun's own ratings: one first screen that passes and five that do not, two of them built by this system. A first screen that resembles a fail anchor, or does not reach the pass anchor on photo quality and brightness, headline scale, one clear task and space, is a FAIL, whatever else is good. Report it on a line that starts "ANCHORS:".

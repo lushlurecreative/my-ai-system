@@ -12,18 +12,19 @@ const READERS = new Set(['Read', 'Glob', 'Grep', 'Write', 'Edit', 'MultiEdit', '
 const textOf = (c) => typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (typeof x === 'string' ? x : x?.text || '')).join('\n') : '';
 const strings = (v, out = []) => { if (typeof v === 'string') out.push(v); else if (Array.isArray(v)) v.forEach((x) => strings(x, out)); else if (v && typeof v === 'object') Object.values(v).forEach((x) => strings(x, out)); return out; };
 export function readTranscript(tp) {
-  const uses = []; const results = new Map(); const delivered = [];
+  const uses = []; const results = new Map(); const resultPos = new Map(); const delivered = []; let seq = 0;
   try {
     for (const l of transcriptLines(tp, ['"tool_use"', 'VERDICT:'])) {
       let d; try { d = JSON.parse(l); } catch { continue; }
-      const c = d?.message?.content;
+      const c = d?.message?.content; seq++;
       if (d.type === 'assistant' && Array.isArray(c)) for (const b of c) if (b.type === 'tool_use') uses.push({ id: b.id, name: b.name, input: b.input || {}, i: uses.length });
-      if (d.type === 'user' && Array.isArray(c)) for (const b of c) if (b.type === 'tool_result') results.set(b.tool_use_id, textOf(b.content));
-      // A critic that ran in the background answers later, as a message, not as the tool's own result. Take those too, but never from the assistant's own words (it could write a verdict itself).
-      if (d.type !== 'assistant' && l.includes('VERDICT:')) { const txt = strings(d).join('\n'); if (/VERDICT\W{0,4}\s*(PASS|FAIL)/i.test(txt) && /VIEWED/i.test(txt)) delivered.push({ text: txt, ri: uses.length }); }
+      const carriesToolResult = d.type === 'user' && Array.isArray(c) && c.some((b) => b.type === 'tool_result');
+      if (carriesToolResult) for (const b of c) if (b.type === 'tool_result') { results.set(b.tool_use_id, textOf(b.content)); resultPos.set(b.tool_use_id, seq); }
+      // A critic that ran in the background answers later, as a hand-back message, not as the tool's own result. Take only real hand-backs: not the assistant's own words (it could write a verdict itself), not a tool's output that quotes an old report, not a compaction summary.
+      if (d.type !== 'assistant' && !carriesToolResult && l.includes('VERDICT:')) { const txt = strings(d).join('\n'); if (/Subagent hand-back|<task-notification>|agent-message/i.test(txt) && !/This session is being continued|summary below covers/i.test(txt) && /VERDICT\W{0,4}\s*(PASS|FAIL)/i.test(txt) && /VIEWED/i.test(txt)) delivered.push({ text: txt, ri: uses.length, seq }); }
     }
   } catch { return null; }
-  return { uses, results, delivered };
+  return { uses, results, resultPos, delivered };
 }
 export const pngSize = (f) => { try { const b = fs.readFileSync(f).subarray(0, 24); if (b.length < 24 || b.readUInt32BE(0) !== 0x89504e47) return null; return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) }; } catch { return null; } };
 const norm = (u) => String(u).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[)>.,;]+$/, '').replace(/\/$/, '');
@@ -70,7 +71,7 @@ export function designGate(root, transcriptPath, opts = {}) {
   const need = (f, why) => (fs.existsSync(path.join(dir, f)) ? null : `docs/design/${slug}/${f} is missing: ${why}`);
   if (!/^Rulings applied:/m.test(card) || !(card.match(/^Rulings applied:\s*\n((?:[ \t]*-.*\n?)*)/m)?.[1] || '').split('\n').some((l) => l.replace(/^\s*-\s*/, '').trim() && !l.trim().startsWith('-  (') && !/^\s*-\s*\(/.test(l))) return 'The card needs a "Rulings applied:" list: every decision Shaun has recorded (docs/RULINGS.md) that touches this design, one per line, each with how you are honoring it.';
   const tr = readTranscript(transcriptPath || ''); if (!tr) return 'The session record could not be read, so the design work cannot be proven. Do not mark this DONE.';
-  const { uses, results, delivered } = tr;
+  const { uses, results, resultPos, delivered } = tr;
 
   // 1. design skills actually run
   const skills = new Set(uses.filter((u) => u.name === 'Skill').map((u) => String(u.input.skill || '').toLowerCase()).filter((s) => patterns.some((p) => s.includes(p))));
@@ -157,11 +158,21 @@ export function designGate(root, transcriptPath, opts = {}) {
 
   // 6. the independent critic: 2+ rounds, last one PASS, work changed between rounds, final version is the one reviewed
   const launches = uses.filter((u) => (u.name === 'Agent' || u.name === 'Task') && String(u.input.subagent_type || '').toLowerCase() === 'design-critic');
-  const arrived = []; const seenTxt = new Set();
-  const addText = (txt) => { const key = txt.replace(/\s+/g, ' ').trim().slice(-600); if (!seenTxt.has(key) && /VERDICT\W{0,4}\s*(PASS|FAIL)/i.test(txt) && /VIEWED/i.test(txt)) { seenTxt.add(key); arrived.push(txt); } };
-  for (const u of launches) addText(results.get(u.id) || '');
-  for (const dv of delivered) addText(dv.text);
-  const rounds = launches.slice(0, arrived.length).map((u, k) => ({ u, r: arrived[k] }));
+  const arrived = []; // {text, seq, launch}. Two rounds can have the same words, so a report is never dropped for matching an earlier one; only a copy delivered twice in a row is.
+  const isReport = (txt) => /VERDICT\W{0,4}\s*(PASS|FAIL)/i.test(txt) && /VIEWED/i.test(txt);
+  for (const u of launches) { const txt = results.get(u.id) || ''; if (isReport(txt)) arrived.push({ text: txt, seq: resultPos.get(u.id) || 0, launch: u }); }
+  // each launch's tool result names the agent it started; a hand-back that mentions that id belongs to that launch
+  const agentIds = new Map(launches.map((u) => [u, ((results.get(u.id) || '').match(/agentId:\s*([a-z0-9]{8,})/i) || [])[1]]));
+  const keyOf = (txt) => txt.replace(/\s+/g, ' ').trim().slice(-600);
+  for (const dv of delivered) {
+    const prev = arrived.filter((a) => !a.launch || a.seq).sort((a, b) => b.seq - a.seq)[0];
+    if (prev && keyOf(prev.text) === keyOf(dv.text) && Math.abs(dv.seq - prev.seq) <= 2 && !launches.some((u) => results.get(u.id) === prev.text && false)) continue;
+    const owner = launches.find((u) => agentIds.get(u) && dv.text.includes(agentIds.get(u))); arrived.push({ text: dv.text, seq: dv.seq, launch: owner || null });
+  }
+  arrived.sort((a, b) => a.seq - b.seq);
+  // launches in order; a verdict joins its own launch by id, otherwise the next launch that has no verdict yet
+  const taken = new Set(arrived.filter((a) => a.launch).map((a) => a.launch)); const free = launches.filter((u) => !taken.has(u)); let fi = 0;
+  const rounds = arrived.map((a) => ({ u: a.launch || free[fi++] || launches[launches.length - 1], r: a.text })).filter((x) => x.u);
   if (rounds.length < 2) return `The design-critic has returned ${rounds.length} verdict(s); at least 2 rounds are required (review, fix what it found, review again). Launch it with the Agent tool (subagent_type design-critic), give it the renders in docs/design/${slug}/shots/, REFERENCES.md, CONCEPT.md and the trade.`;
   const verdict = (x) => (x.r.match(/VERDICT\W{0,4}\s*(PASS|FAIL)/gi).pop().match(/PASS|FAIL/i)[0].toUpperCase());
   const last = rounds[rounds.length - 1];

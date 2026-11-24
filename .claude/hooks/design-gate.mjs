@@ -121,9 +121,19 @@ export function designGate(root, transcriptPath, opts = {}) {
   if (!/^Research waived:\s*\S/mi.test(card)) {
     const mr = need('RESEARCH.md', 'list one line for EACH channel type, in this form: "- <type> | <link or none> | read, not-found or skipped | <evidence file path, or the search you ran, or the reason>". Types: website, instagram, facebook, tiktok, youtube, google-maps, delivery-marketplace, directory. "read" needs a saved evidence file (notes, screenshots or downloaded clips); "not-found" needs the search you ran; "skipped" needs a real reason. Videos and posts you read are saved under docs/design/<name>/ or the project\'s research records.'); if (mr) return mr;
     const rows = fs.readFileSync(path.join(dir, 'RESEARCH.md'), 'utf8').split('\n').map((l) => l.match(/^\s*-\s*([\w-]+)\s*\|\s*([^|]*)\|\s*(read|not-found|skipped|unread)\s*\|\s*(.+)$/i)).filter(Boolean).map((m) => ({ type: m[1].toLowerCase(), link: m[2].trim(), status: m[3].toLowerCase(), note: m[4].trim() }));
-    const TYPES = ['website', 'instagram', 'facebook', 'tiktok', 'youtube', 'google-maps', 'delivery-marketplace', 'directory'];
+    const TYPES = ['website', 'instagram', 'facebook', 'tiktok', 'youtube', 'google-maps', 'delivery-marketplace', 'directory', 'link-in-bio', 'catalog-document'];
     const missingTypes = TYPES.filter((ty) => !rows.some((r) => r.type === ty));
     if (missingTypes.length) return `RESEARCH.md has no line for: ${missingTypes.join(', ')}. Search for the business on every channel type and record the result of each (read, not-found with the search you ran, or skipped with a reason).`;
+    // every link found inside something already read is followed: a link-in-bio page, a catalog on a shared drive, a menu, a social page, a map pin
+    const OWN = /(linktr\.ee|beacons\.ai|bio\.link|lnk\.bio|linkin\.bio|taplink|carrd\.co|drive\.google\.com|docs\.google\.com|dropbox\.com|canva\.com|wa\.me|api\.whatsapp\.com|facebook\.com|fb\.com|fb\.me|instagram\.com|tiktok\.com|youtube\.com|youtu\.be|maps\.app\.goo\.gl|google\.[a-z.]+\/maps|rappi\.|pedidosya\.|ubereats\.)/i;
+    const normUrl = (u) => String(u).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/[)>.,;"']+$/, '').replace(/\/$/, '');
+    const listed = rows.map((r) => normUrl(r.link)).concat(rows.map((r) => r.note.toLowerCase()));
+    const missed = [];
+    for (const r of rows.filter((x) => x.status === 'read')) {
+      const f = path.resolve(root, r.note.split(/\s/)[0]); let txt = ''; try { if (fs.statSync(f).isFile() && fs.statSync(f).size < 3e6) txt = fs.readFileSync(f, 'utf8'); } catch { continue; }
+      for (const u of txt.match(/https?:\/\/[^\s"'<>)\]]+/g) || []) { if (!OWN.test(u)) continue; const n = normUrl(u); if (!n || n === normUrl(r.link) || listed.some((l) => l && (l === n || l.includes(n)))) continue; if (!missed.includes(n)) missed.push(n); }
+    }
+    if (missed.length) return `Links found inside what you already read were not followed: ${missed.slice(0, 4).join(', ')}. A link-in-bio page, a catalog on a shared drive, a menu or a social page each get their own line in RESEARCH.md ("- link-in-bio | <url> | read | <evidence file>", or "skipped" with a real reason), and everything inside them is read: documents are opened page by page and their photos and prices saved.`;
     const unread = rows.filter((r) => r.status === 'unread'); if (unread.length) return `These channels exist but were never read: ${unread.map((r) => r.type).join(', ')}. Read each one (save notes, screenshots or clips as evidence), then mark it "read".`;
     const bad = rows.filter((r) => (r.status === 'read' && !fs.existsSync(path.resolve(root, r.note.split(/\s/)[0]))) || (r.status === 'not-found' && r.note.length < 10) || (r.status === 'skipped' && r.note.length < 15));
     if (bad.length) return `RESEARCH.md: ${bad.slice(0, 3).map((r) => r.type).join(', ')} need real evidence: a "read" line must start with the path of a saved evidence file that exists; "not-found" needs the search you ran; "skipped" needs a real reason.`;

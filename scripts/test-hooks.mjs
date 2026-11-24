@@ -871,6 +871,7 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('design gate: more than two neighbor references -> refused', has({ neigh: true }, 'neighbor'), true);
   t('design gate: no phone-width render -> refused', has({ noPhone: true }, 'phone width'), true);
   t('design gate: too little real material -> stop on this business', has({ fewPhotos: true }, 'Not enough real material'), true);
+  t('design gate: thin material with an owner-directed waiver on the card -> allowed', (() => { build({ fewPhotos: true, fewItems: true }); fs.writeFileSync(path.join(T, 'docs/TASK.md'), fs.readFileSync(path.join(T, 'docs/TASK.md'), 'utf8').replace('Type: DESIGN', 'Type: DESIGN\nMaterial waived: Shaun asked for this business, 24 Nov')); return /Not enough real material/.test(designGate(T, path.join(os.tmpdir(), 'ais-design-transcript.jsonl')) || ''); })(), false);
   t('design gate: too few real items -> stop on this business', has({ fewItems: true }, 'Not enough real material'), true);
   t('design gate: only one critic round -> refused', has({ oneRound: true }, 'at least 2 rounds'), true);
   t('design gate: critic last verdict FAIL -> refused', has({ lastFail: true }, 'last verdict is FAIL'), true);

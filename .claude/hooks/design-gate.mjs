@@ -117,6 +117,17 @@ export function designGate(root, transcriptPath, opts = {}) {
   const itemsN = Number(((content.match(/^\s*Items:\s*(\d+)/im) || [])[1])) || 0;
   if (((photoPaths.length + videoPaths.length) < minPhotos || itemsN < minItems) && !/^Material waived:\s*\S/mi.test(card)) return `Not enough real material for a page that can look good: ${photoPaths.length} photographs and ${videoPaths.length} videos found on disk (${minPhotos} photographs or videos in total are required), ${itemsN} of ${minItems} required real items. Do not pad it with stock or invented content. Stop on this business, record it as waiting for more photographs and items from the business, and tell Shaun in plain words which business and what is missing.`;
 
+  // 3a. research before design: every channel the business can have was searched, and every one that exists was actually read
+  if (!/^Research waived:\s*\S/mi.test(card)) {
+    const mr = need('RESEARCH.md', 'list one line for EACH channel type, in this form: "- <type> | <link or none> | read, not-found or skipped | <evidence file path, or the search you ran, or the reason>". Types: website, instagram, facebook, tiktok, youtube, google-maps, delivery-marketplace, directory. "read" needs a saved evidence file (notes, screenshots or downloaded clips); "not-found" needs the search you ran; "skipped" needs a real reason. Videos and posts you read are saved under docs/design/<name>/ or the project\'s research records.'); if (mr) return mr;
+    const rows = fs.readFileSync(path.join(dir, 'RESEARCH.md'), 'utf8').split('\n').map((l) => l.match(/^\s*-\s*([\w-]+)\s*\|\s*([^|]*)\|\s*(read|not-found|skipped|unread)\s*\|\s*(.+)$/i)).filter(Boolean).map((m) => ({ type: m[1].toLowerCase(), link: m[2].trim(), status: m[3].toLowerCase(), note: m[4].trim() }));
+    const TYPES = ['website', 'instagram', 'facebook', 'tiktok', 'youtube', 'google-maps', 'delivery-marketplace', 'directory'];
+    const missingTypes = TYPES.filter((ty) => !rows.some((r) => r.type === ty));
+    if (missingTypes.length) return `RESEARCH.md has no line for: ${missingTypes.join(', ')}. Search for the business on every channel type and record the result of each (read, not-found with the search you ran, or skipped with a reason).`;
+    const unread = rows.filter((r) => r.status === 'unread'); if (unread.length) return `These channels exist but were never read: ${unread.map((r) => r.type).join(', ')}. Read each one (save notes, screenshots or clips as evidence), then mark it "read".`;
+    const bad = rows.filter((r) => (r.status === 'read' && !fs.existsSync(path.resolve(root, r.note.split(/\s/)[0]))) || (r.status === 'not-found' && r.note.length < 10) || (r.status === 'skipped' && r.note.length < 15));
+    if (bad.length) return `RESEARCH.md: ${bad.slice(0, 3).map((r) => r.type).join(', ')} need real evidence: a "read" line must start with the path of a saved evidence file that exists; "not-found" needs the search you ran; "skipped" needs a real reason.`;
+  }
   // 3b. the business's own identity is the starting point: logo, colours and where they came from, and the page really uses them
   if (!/^Brand waived:\s*\S/mi.test(card)) {
     const mb = need('BRAND.md', 'record the business\'s own identity: "Logo: <path to the logo file>", "Colours: <#hex, #hex, ...>" (at least 2, taken from its logo, card, sign or posts), "Sources: <where each came from>", "Use: <how the page uses them>". If it truly has no brand material, put "Brand waived: <why>" on the card.'); if (mb) return mb;

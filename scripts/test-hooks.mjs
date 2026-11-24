@@ -839,6 +839,9 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
     fs.writeFileSync(path.join(D, 'CONCEPT.md'), `Direction: a night bakery run by a family, the cat that guards the ovens. bakeone croissanttown panaderia masamadre pastelnoir hornolocal each lent one idea (product grid, warm tone, menu rhythm) and became ours. ${'The page tells the story of the family bakery at night with real photographs and a type pairing built for it. '.repeat(4)}\nDifferent from: yaw, delicias, moritas: none of them has a story spine.\nHue: ink and amber\nFonts: fraunces dm sans\nHero: arch photograph with eyes\nDensity: airy\nOrder: hero menu family visit\n`);
     fs.writeFileSync(path.join(D, 'CONTENT.md'), `Photos: ${o.fewPhotos ? 'sites/nuit/p1.jpg' : [1, 2, 3, 4, 5, 6].map((n) => `sites/nuit/p${n}.jpg`).join(', ')}\nItems: ${o.fewItems ? 3 : 12}\nDesigned assets: cat illustration\n`);
     for (let n = 1; n <= 6; n++) fs.writeFileSync(path.join(T, `sites/nuit/p${n}.jpg`), 'x');
+    fs.mkdirSync(path.join(D, 'research'), { recursive: true }); fs.writeFileSync(path.join(D, 'research/notes.md'), 'notes'); const rr = 'docs/design/nuit/research/notes.md';
+    const rows = [['website', 'none', 'not-found', 'searched the name and city on the web, nothing of its own'], ['instagram', 'https://instagram.com/x', 'read', rr], ['facebook', 'none', 'not-found', 'searched Facebook for the name and city, none'], ['tiktok', 'https://tiktok.com/@x', o.unreadTiktok ? 'unread' : 'read', rr], ['youtube', 'none', 'not-found', 'searched YouTube for the name, none'], ['google-maps', 'https://maps.example/x', 'read', rr], ['delivery-marketplace', 'https://rappi.example/x', 'read', rr], ['directory', 'none', 'not-found', 'searched directories for the name and phone']];
+    fs.writeFileSync(path.join(D, 'RESEARCH.md'), rows.filter((r) => !(o.noTiktokRow && r[0] === 'tiktok')).map((r) => `- ${r[0]} | ${r[1]} | ${r[2]} | ${r[3]}`).join('\n') + '\n'); if (o.noResearch) fs.rmSync(path.join(D, 'RESEARCH.md'), { force: true });
     fs.writeFileSync(path.join(T, 'sites/nuit/logo.svg'), '<svg/>'); fs.writeFileSync(path.join(D, 'BRAND.md'), 'Logo: sites/nuit/logo.svg\nColours: #eda43a, #f5ebd9, #14100e\nSources: its Instagram logo and posts\nUse: header logo and amber on cream\n');
     if (o.noBrandCard) fs.rmSync(path.join(D, 'BRAND.md'), { force: true });
     if (o.brandIgnored) { const f = path.join(T, 'sites/nuit/index.html'); fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/eda43a|f5ebd9|14100e/g, 'abcdef')); }
@@ -884,6 +887,9 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('design gate: page changed after the last PASS -> refused', has({ editAfter: true }, 'open both renders|changed after'), true);
   t('design gate: builder never looked at the renders -> refused', has({ noLook: true }, 'open both renders yourself'), true);
   t('design gate: critic skipped a required line -> refused', has({ badCritic: true }, 'missing a required line'), true);
+  t('design gate: no research record -> refused', has({ noResearch: true }, 'RESEARCH.md'), true);
+  t('design gate: a channel type missing from the research -> refused', has({ noTiktokRow: true }, 'tiktok'), true);
+  t('design gate: a channel that exists but was never read -> refused', has({ unreadTiktok: true }, 'never read'), true);
   t('design gate: no brand record -> refused', has({ noBrandCard: true }, 'BRAND.md'), true);
   t('design gate: page ignores the brand colours -> refused', has({ brandIgnored: true }, 'brand colours'), true);
   t('design gate: page does not use the logo -> refused', has({ noLogoUse: true }, 'does not use the business'), true);

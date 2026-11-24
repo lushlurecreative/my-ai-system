@@ -10,17 +10,20 @@ const WRITERS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 const READERS = new Set(['Read', 'Glob', 'Grep', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Skill', 'Agent', 'Task', 'TodoWrite']);
 
 const textOf = (c) => typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (typeof x === 'string' ? x : x?.text || '')).join('\n') : '';
+const strings = (v, out = []) => { if (typeof v === 'string') out.push(v); else if (Array.isArray(v)) v.forEach((x) => strings(x, out)); else if (v && typeof v === 'object') Object.values(v).forEach((x) => strings(x, out)); return out; };
 export function readTranscript(tp) {
-  const uses = []; const results = new Map();
+  const uses = []; const results = new Map(); const delivered = [];
   try {
     for (const l of transcriptLines(tp, ['"tool_use"', 'VERDICT:'])) {
-      if (!l.trim()) continue; let d; try { d = JSON.parse(l); } catch { continue; }
-      const c = d?.message?.content; if (!Array.isArray(c)) continue;
-      if (d.type === 'assistant') for (const b of c) if (b.type === 'tool_use') uses.push({ id: b.id, name: b.name, input: b.input || {}, i: uses.length });
-      if (d.type === 'user') for (const b of c) if (b.type === 'tool_result') results.set(b.tool_use_id, textOf(b.content));
+      let d; try { d = JSON.parse(l); } catch { continue; }
+      const c = d?.message?.content;
+      if (d.type === 'assistant' && Array.isArray(c)) for (const b of c) if (b.type === 'tool_use') uses.push({ id: b.id, name: b.name, input: b.input || {}, i: uses.length });
+      if (d.type === 'user' && Array.isArray(c)) for (const b of c) if (b.type === 'tool_result') results.set(b.tool_use_id, textOf(b.content));
+      // A critic that ran in the background answers later, as a message, not as the tool's own result. Take those too, but never from the assistant's own words (it could write a verdict itself).
+      if (d.type !== 'assistant' && l.includes('VERDICT:')) { const txt = strings(d).join('\n'); if (/VERDICT:\s*(PASS|FAIL)/i.test(txt) && /VIEWED:/i.test(txt)) delivered.push({ text: txt, ri: uses.length }); }
     }
   } catch { return null; }
-  return { uses, results };
+  return { uses, results, delivered };
 }
 export const pngSize = (f) => { try { const b = fs.readFileSync(f).subarray(0, 24); if (b.length < 24 || b.readUInt32BE(0) !== 0x89504e47) return null; return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) }; } catch { return null; } };
 const norm = (u) => String(u).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[)>.,;]+$/, '').replace(/\/$/, '');
@@ -65,7 +68,7 @@ export function designGate(root, transcriptPath, opts = {}) {
   const need = (f, why) => (fs.existsSync(path.join(dir, f)) ? null : `docs/design/${slug}/${f} is missing: ${why}`);
   if (!/^Rulings applied:/m.test(card) || !(card.match(/^Rulings applied:\s*\n((?:[ \t]*-.*\n?)*)/m)?.[1] || '').split('\n').some((l) => l.replace(/^\s*-\s*/, '').trim() && !l.trim().startsWith('-  (') && !/^\s*-\s*\(/.test(l))) return 'The card needs a "Rulings applied:" list: every decision Shaun has recorded (docs/RULINGS.md) that touches this design, one per line, each with how you are honoring it.';
   const tr = readTranscript(transcriptPath || ''); if (!tr) return 'The session record could not be read, so the design work cannot be proven. Do not mark this DONE.';
-  const { uses, results } = tr;
+  const { uses, results, delivered } = tr;
 
   // 1. design skills actually run
   const skills = new Set(uses.filter((u) => u.name === 'Skill').map((u) => String(u.input.skill || '').toLowerCase()).filter((s) => patterns.some((p) => s.includes(p))));
@@ -149,15 +152,20 @@ export function designGate(root, transcriptPath, opts = {}) {
   if (!viewedShot((d) => d.w > 0 && d.w <= 500) || !viewedShot((d) => d.w >= 1200)) return 'After your last change to the page, open both renders yourself (Read the phone image and the desktop image) and look at them before asking for review. Re-render if the page changed since the renders were taken.';
 
   // 6. the independent critic: 2+ rounds, last one PASS, work changed between rounds, final version is the one reviewed
-  const rounds = uses.filter((u) => (u.name === 'Agent' || u.name === 'Task') && String(u.input.subagent_type || '').toLowerCase() === 'design-critic').map((u) => ({ u, r: results.get(u.id) || '' })).filter((x) => /VERDICT:\s*(PASS|FAIL)/i.test(x.r));
+  const launches = uses.filter((u) => (u.name === 'Agent' || u.name === 'Task') && String(u.input.subagent_type || '').toLowerCase() === 'design-critic');
+  const arrived = []; const seenTxt = new Set();
+  const addText = (txt) => { const key = txt.replace(/\s+/g, ' ').trim().slice(-600); if (!seenTxt.has(key) && /VERDICT:\s*(PASS|FAIL)/i.test(txt) && /VIEWED:/i.test(txt)) { seenTxt.add(key); arrived.push(txt); } };
+  for (const u of launches) addText(results.get(u.id) || '');
+  for (const dv of delivered) addText(dv.text);
+  const rounds = launches.slice(0, arrived.length).map((u, k) => ({ u, r: arrived[k] }));
   if (rounds.length < 2) return `The design-critic has returned ${rounds.length} verdict(s); at least 2 rounds are required (review, fix what it found, review again). Launch it with the Agent tool (subagent_type design-critic), give it the renders in docs/design/${slug}/shots/, REFERENCES.md, CONCEPT.md and the trade.`;
   const verdict = (x) => (x.r.match(/VERDICT:\s*(PASS|FAIL)/gi).pop().match(/PASS|FAIL/i)[0].toUpperCase());
   const last = rounds[rounds.length - 1];
   if (verdict(last) !== 'PASS') return 'The design-critic\'s last verdict is FAIL. Fix every problem it named, re-render, and run it again.';
   for (const x of rounds) {
-    const viewed = (x.r.match(/^VIEWED:\s*(.+)$/im) || [])[1] || '';
+    const viewed = (x.r.match(/^\s*VIEWED:\s*(.+)$/im) || [])[1] || '';
     if (!viewed || !files.some((f) => viewed.includes(f))) return 'A critic round did not list the render files it viewed ("VIEWED: <file names>"). Run it again and require that line.';
-    if (!/^RULINGS:/im.test(x.r) || !/^TRADE-RELEVANCE:/im.test(x.r) || !/^PAIRWISE:/im.test(x.r) || !/^GARBAGE-CASE:/im.test(x.r)) return 'A critic round is missing a required line (RULINGS:, TRADE-RELEVANCE:, PAIRWISE:, GARBAGE-CASE:). Run it again; it must report all four.';
+    if (!/^\s*RULINGS:/im.test(x.r) || !/^\s*TRADE-RELEVANCE:/im.test(x.r) || !/^\s*PAIRWISE:/im.test(x.r) || !/^\s*GARBAGE-CASE:/im.test(x.r)) return 'A critic round is missing a required line (RULINGS:, TRADE-RELEVANCE:, PAIRWISE:, GARBAGE-CASE:). Run it again; it must report all four.';
   }
   const inSite = (u) => WRITERS.has(u.name) && path.resolve(root, String(u.input.file_path || u.input.notebook_path || '')).startsWith(path.dirname(site));
   const edits = uses.filter(inSite);

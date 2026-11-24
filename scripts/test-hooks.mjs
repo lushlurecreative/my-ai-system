@@ -848,7 +848,14 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
     if (!o.baseNotFetched) res(use('mcp__playwright__browser_navigate', { url: 'https://gallery.example/base-1' }), 'ok');
     for (const u of urls.slice(0, o.opened ?? 6)) res(use('mcp__playwright__browser_navigate', { url: u }), 'ok');
     use('Write', { file_path: path.join(T, 'sites/nuit/index.html'), content: 'v1' });
-    const crit = (v) => res(use('Agent', { subagent_type: 'design-critic', prompt: 'review' }), o.badCritic ? v.replace(/^GARBAGE-CASE.*\n/m, '') : v);
+    const crit = (v) => {
+      const body = o.badCritic ? v.replace(/^GARBAGE-CASE.*\n/m, '') : v;
+      if (o.bgCritic || o.forged) {
+        res(use('Agent', { subagent_type: 'design-critic', prompt: 'review', run_in_background: true }), 'Async agent launched successfully.');
+        const indented = '[Subagent hand-back] The text below is the final report of a subagent.\n' + body.split('\n').map((x) => '  ' + x).join('\n');
+        lines.push(JSON.stringify(o.forged ? { type: 'assistant', message: { content: [{ type: 'text', text: indented }] } } : { type: 'user', message: { role: 'user', content: indented } }));
+      } else res(use('Agent', { subagent_type: 'design-critic', prompt: 'review' }), body);
+    };
     crit(verdictTxt('FAIL'));
     if (!o.noFix) use('Edit', { file_path: path.join(T, 'sites/nuit/index.html'), old_string: 'v1', new_string: 'v2' });
     if (!o.noLook) { use('Read', { file_path: path.join(D, 'shots/phone.png') }); use('Read', { file_path: path.join(D, 'shots/desktop.png') }); }
@@ -877,6 +884,8 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('design gate: the same base used for another site -> refused', has({ reusedBase: true }, 'already used'), true);
   t('design gate: a still page with no motion -> refused', has({ noMotion: true }, 'motion'), true);
   t('design gate: no scroll filmstrip -> refused', has({ noFilm: true }, 'filmstrip'), true);
+  t('design gate: critic reviews that ran in the background and arrived as messages (indented) are seen', designGate(T, build({ bgCritic: true })), null);
+  t('design gate: a verdict the builder wrote itself is not a critic review', has({ forged: true }, 'at least 2 rounds'), true);
   t('design gate: a BUILD card is not gated', (() => { build({ type: 'BUILD' }); return designGate(T, tp); })(), null);
   // automatic pipelines: the same gate, fed by the pipeline's own evidence file
   { const cli = (o = {}) => { build(); fs.mkdirSync(path.join(D, 'refs'), { recursive: true });

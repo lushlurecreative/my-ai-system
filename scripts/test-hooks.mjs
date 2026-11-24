@@ -839,6 +839,10 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
     fs.writeFileSync(path.join(D, 'CONCEPT.md'), `Direction: a night bakery run by a family, the cat that guards the ovens. bakeone croissanttown panaderia masamadre pastelnoir hornolocal each lent one idea (product grid, warm tone, menu rhythm) and became ours. ${'The page tells the story of the family bakery at night with real photographs and a type pairing built for it. '.repeat(4)}\nDifferent from: yaw, delicias, moritas: none of them has a story spine.\nHue: ink and amber\nFonts: fraunces dm sans\nHero: arch photograph with eyes\nDensity: airy\nOrder: hero menu family visit\n`);
     fs.writeFileSync(path.join(D, 'CONTENT.md'), `Photos: ${o.fewPhotos ? 'sites/nuit/p1.jpg' : [1, 2, 3, 4, 5, 6].map((n) => `sites/nuit/p${n}.jpg`).join(', ')}\nItems: ${o.fewItems ? 3 : 12}\nDesigned assets: cat illustration\n`);
     for (let n = 1; n <= 6; n++) fs.writeFileSync(path.join(T, `sites/nuit/p${n}.jpg`), 'x');
+    fs.writeFileSync(path.join(T, 'sites/nuit/logo.svg'), '<svg/>'); fs.writeFileSync(path.join(D, 'BRAND.md'), 'Logo: sites/nuit/logo.svg\nColours: #eda43a, #f5ebd9, #14100e\nSources: its Instagram logo and posts\nUse: header logo and amber on cream\n');
+    if (o.noBrandCard) fs.rmSync(path.join(D, 'BRAND.md'), { force: true });
+    if (o.brandIgnored) { const f = path.join(T, 'sites/nuit/index.html'); fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/eda43a|f5ebd9|14100e/g, 'abcdef')); }
+    { const f = path.join(T, 'sites/nuit/index.html'); const h = fs.readFileSync(f, 'utf8'); if (!o.brandIgnored && !o.noLogoUse) fs.writeFileSync(f, h.replace('<div class=', '<img class="logo" src="logo.svg"><style>:root{--b1:#eda43a;--b2:#f5ebd9}</style><div class=')); }
     fs.writeFileSync(path.join(T, 'docs/TASK.md'), `# Current task\n\nStatus: ${o.status || 'ACTIVE'}\nType: ${o.type || 'DESIGN'}\nDesign: ${o.noDesign ? '' : 'nuit'}\nTrade: bakery\nSite: sites/nuit\nBase: ${o.noBaseLine ? '' : 'https://gallery.example/base-1'}\n\nTask:\n- nuit page\n\nAllowed paths:\n- sites/**\n- docs/design/**\n\nTools needed:\n- none\n\nRulings applied:\n- 2026-10-24 use the design tools with a critique loop: followed\n\nDone means:\n- [x] it\n\nEvidence:\n- a\n\nReviewer verdict:\n- PASS\n`);
     // the record
     const lines = []; let n = 0; const id = () => `t${++n}`;
@@ -880,6 +884,10 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('design gate: page changed after the last PASS -> refused', has({ editAfter: true }, 'open both renders|changed after'), true);
   t('design gate: builder never looked at the renders -> refused', has({ noLook: true }, 'open both renders yourself'), true);
   t('design gate: critic skipped a required line -> refused', has({ badCritic: true }, 'missing a required line'), true);
+  t('design gate: no brand record -> refused', has({ noBrandCard: true }, 'BRAND.md'), true);
+  t('design gate: page ignores the brand colours -> refused', has({ brandIgnored: true }, 'brand colours'), true);
+  t('design gate: page does not use the logo -> refused', has({ noLogoUse: true }, 'does not use the business'), true);
+  t('design gate: a brand waiver on the card is accepted', (() => { build({ noBrandCard: true }); fs.writeFileSync(path.join(T, 'docs/TASK.md'), fs.readFileSync(path.join(T, 'docs/TASK.md'), 'utf8').replace('Type: DESIGN', 'Type: DESIGN\nBrand waived: the business has no logo or colours anywhere')); return /BRAND/.test(designGate(T, path.join(os.tmpdir(), 'ais-design-transcript.jsonl')) || ''); })(), false);
   t('design gate: no Base line on the card -> refused', has({ noBaseLine: true }, 'Base:'), true);
   t('design gate: the base design was never fetched -> refused', has({ baseNotFetched: true }, 'never opened or fetched'), true);
   t('design gate: page not built from the base code -> refused', has({ farBase: true }, 'does not look built from the base'), true);

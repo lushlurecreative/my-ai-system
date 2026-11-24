@@ -117,6 +117,19 @@ export function designGate(root, transcriptPath, opts = {}) {
   const itemsN = Number(((content.match(/^\s*Items:\s*(\d+)/im) || [])[1])) || 0;
   if (((photoPaths.length + videoPaths.length) < minPhotos || itemsN < minItems) && !/^Material waived:\s*\S/mi.test(card)) return `Not enough real material for a page that can look good: ${photoPaths.length} photographs and ${videoPaths.length} videos found on disk (${minPhotos} photographs or videos in total are required), ${itemsN} of ${minItems} required real items. Do not pad it with stock or invented content. Stop on this business, record it as waiting for more photographs and items from the business, and tell Shaun in plain words which business and what is missing.`;
 
+  // 3b. the business's own identity is the starting point: logo, colours and where they came from, and the page really uses them
+  if (!/^Brand waived:\s*\S/mi.test(card)) {
+    const mb = need('BRAND.md', 'record the business\'s own identity: "Logo: <path to the logo file>", "Colours: <#hex, #hex, ...>" (at least 2, taken from its logo, card, sign or posts), "Sources: <where each came from>", "Use: <how the page uses them>". If it truly has no brand material, put "Brand waived: <why>" on the card.'); if (mb) return mb;
+    const brandTxt = fs.readFileSync(path.join(dir, 'BRAND.md'), 'utf8'); const logoRel = ((brandTxt.match(/^\s*Logo:\s*(\S+)/im) || [])[1] || '').trim();
+    const hexes = [...new Set(((brandTxt.match(/^\s*Colou?rs:\s*(.+)$/im) || [])[1] || '').match(/#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/gi) || [])].map((h) => h.toLowerCase());
+    if (!logoRel || !fs.existsSync(path.resolve(root, logoRel))) return 'BRAND.md needs "Logo: <path>" pointing at the business\'s real logo file.';
+    if (hexes.length < 2 || !/^\s*Sources:\s*\S/im.test(brandTxt)) return 'BRAND.md needs at least 2 brand colours as hex codes on a "Colours:" line, and a "Sources:" line saying where each came from (its logo, card, sign or posts).';
+    let siteFile0 = path.resolve(root, siteRaw); try { if (fs.statSync(siteFile0).isDirectory()) siteFile0 = path.join(siteFile0, 'index.html'); } catch { /* checked later */ }
+    const pageTxt = readTree(path.dirname(siteFile0), /\.(html?|css|js|mjs|svg)$/i).toLowerCase(); const expand = (h) => (h.length === 4 ? '#' + [...h.slice(1)].map((c) => c + c).join('') : h);
+    const used = hexes.filter((h) => pageTxt.includes(h) || pageTxt.includes(expand(h))).length;
+    if (used < 2) return `The page uses only ${used} of the brand colours listed in BRAND.md (${hexes.join(', ')}). Build the palette from the business's own colours.`;
+    if (!pageTxt.includes(path.basename(logoRel).toLowerCase()) && !/class\s*=\s*["'][^"']*logo|id\s*=\s*["']logo/.test(pageTxt)) return `The page does not use the business's logo (${logoRel}). Put it in the header and use it as a motif.`;
+  }
   // 4. renders: phone and desktop, seen by the critic
   const shots = path.join(dir, 'shots'); let files = []; try { files = fs.readdirSync(shots).filter((f) => /\.png$/i.test(f)); } catch { /* none */ }
   const anyImages = (() => { const out = []; const walk = (d) => { let es = []; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const e of es) { if (e.isDirectory()) { if (!/^(BASE|node_modules)$/i.test(e.name)) walk(path.join(d, e.name)); } else if (/\.(png|jpe?g|webp)$/i.test(e.name)) out.push(e.name); } }; walk(dir); return out; })();

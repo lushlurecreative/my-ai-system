@@ -114,8 +114,25 @@ export function designGate(root, transcriptPath, opts = {}) {
   const content = fs.readFileSync(path.join(dir, 'CONTENT.md'), 'utf8');
   const photoPaths = ((content.match(/^\s*Photos:\s*(.+)$/im) || [])[1] || '').split(',').map((x) => x.trim()).filter(Boolean).filter((x) => fs.existsSync(path.resolve(root, x)));
   const videoPaths = ((content.match(/^\s*Videos:\s*(.+)$/im) || [])[1] || '').split(',').map((x) => x.trim()).filter(Boolean).filter((x) => fs.existsSync(path.resolve(root, x)));
-  const itemsN = Number(((content.match(/^\s*Items:\s*(\d+)/im) || [])[1])) || 0;
-  if (((photoPaths.length + videoPaths.length) < minPhotos || itemsN < minItems) && !/^Material waived:\s*\S/mi.test(card)) return `Not enough real material for a page that can look good: ${photoPaths.length} photographs and ${videoPaths.length} videos found on disk (${minPhotos} photographs or videos in total are required), ${itemsN} of ${minItems} required real items. Do not pad it with stock or invented content. Stop on this business, record it as waiting for more photographs and items from the business, and tell Shaun in plain words which business and what is missing.`;
+  const itemsN0 = Number(((content.match(/^\s*Items:\s*(\d+)/im) || [])[1])) || 0;
+  // honest stand-ins: when the business's own material is judged unusable, labelled sample material may fill the gap, and every stand-in is listed to be replaced
+  const photoVerdict = ((content.match(/^\s*Photo verdict:\s*([\w-]+)/im) || [])[1] || 'own').toLowerCase();
+  const standPaths = ((content.match(/^\s*Stand-in photos:\s*(.+)$/im) || [])[1] || '').split(',').map((x) => x.trim()).filter(Boolean).filter((x) => fs.existsSync(path.resolve(root, x)));
+  const standItems = Number(((content.match(/^\s*Stand-in items:\s*(\d+)/im) || [])[1])) || 0;
+  const replaceLines = (content.split(/^\s*Replace later:[ \t]*/im)[1] || '').split('\n').map((l) => l.replace(/^[\s\-*]+/, '').trim()).filter((l, k) => l.length >= 8 && (k === 0 || /^\s*[-*]|^\S/.test(l))).slice(0, 50).length;
+  if (!['own', 'mixed', 'stand-in'].includes(photoVerdict)) return 'CONTENT.md "Photo verdict:" must be own, mixed or stand-in.';
+  if (photoVerdict === 'own' && (standPaths.length || standItems)) return 'CONTENT.md lists stand-in material but says "Photo verdict: own". Say mixed or stand-in so the page is labelled honestly.';
+  if (photoVerdict !== 'own' && !/^Material waived:\s*\S/mi.test(card)) {
+    const reason = (content.match(/^\s*Verdict reason:\s*(.+)$/im) || [])[1] || '';
+    if (reason.trim().length < 25) return 'CONTENT.md needs "Verdict reason: <what you examined (how many photos, where from) and why it is not good enough>" of at least a full sentence. Judge the business\'s own material honestly and say what you saw.';
+    if (!standPaths.length && !standItems) return 'Photo verdict is not "own", so CONTENT.md needs "Stand-in photos: <paths of the sample photos you used, files that exist>" (and/or "Stand-in items: <n>").';
+    if (!replaceLines) return 'CONTENT.md needs a "Replace later:" list with one line for each stand-in or missing fact (each photo slot, a phone number not found, a price not found) saying what the business should send to replace it.';
+    let sf = path.resolve(root, siteRaw); try { if (fs.statSync(sf).isDirectory()) sf = path.join(sf, 'index.html'); } catch { /* checked later */ }
+    const pg = readTree(path.dirname(sf), /\.(html?|js|mjs)$/i).toLowerCase();
+    if (!/foto de ejemplo|tu foto aqu|ejemplo|your photo here|sample photo|sample image/.test(pg)) return 'The page uses stand-in material, so it must say so visibly on the page itself (for example a badge over each sample photo: "Foto de ejemplo - aqu\u00ed ir\u00e1 tu foto"). Stand-ins are never shown as if they were the business\'s own.';
+  }
+  const itemsN = itemsN0 + standItems;
+  if (((photoPaths.length + videoPaths.length + standPaths.length) < minPhotos || itemsN < minItems) && !/^Material waived:\s*\S/mi.test(card)) return `Not enough material for a page that can look good: ${photoPaths.length} of the business's own photographs, ${videoPaths.length} videos and ${standPaths.length} labelled stand-ins found on disk (${minPhotos} in total are required), ${itemsN} of ${minItems} required items. If the business's own material is unusable, set "Photo verdict: stand-in" with labelled sample photos and a "Replace later:" list. Never present sample material as the business's own and never invent products or prices.`;
 
   // 3a. research before design: every channel the business can have was searched, and every one that exists was actually read
   if (!/^Research waived:\s*\S/mi.test(card)) {

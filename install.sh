@@ -21,6 +21,7 @@ else cp "$SRC/docs/TASK.md" "$DST/docs/TASK.md"; fi
 # docs/TOOLBOX.md: old format has no Status column
 if [ -f "$DST/docs/TOOLBOX.md" ] && ! grep -q "| Status |" "$DST/docs/TOOLBOX.md"; then mv "$DST/docs/TOOLBOX.md" "$DST/docs/TOOLBOX.old.md"; cp "$SRC/docs/TOOLBOX.md" "$DST/docs/TOOLBOX.md"; NOTES="$NOTES\n- docs/TOOLBOX.md was in the old format: saved as docs/TOOLBOX.old.md. Carry its rows into the new table with a status each."; fi
 mkdir -p "$DST/docs/design"; for f in docs/design/BAR.md docs/design/BANNED.md docs/design/SOURCES.md; do [ -f "$DST/$f" ] || cp "$SRC/$f" "$DST/$f"; done
+mkdir -p "$DST/docs/pitch/countries"; for f in docs/pitch/BANNED-CLAIMS.md docs/pitch/CASE-TEMPLATE.md docs/pitch/MESSAGES-TEMPLATE.md docs/pitch/countries/_TEMPLATE.md docs/pitch/countries/ecuador.md; do [ -f "$DST/$f" ] || cp "$SRC/$f" "$DST/$f"; done
 for f in PROTECTED.md docs/PROJECT.md docs/SUBGOALS.md docs/NEXT.md docs/TOOLBOX.md docs/AGENTS.md docs/RULINGS.md docs/FIXED.md docs/ASKS.md; do [ -f "$DST/$f" ] || cp "$SRC/$f" "$DST/$f"; done
 # .claude/system.json: add any missing default keys, keep the project's values
 node -e '

@@ -65,9 +65,9 @@ export function runUpdate() {
     let have = '0'; try { have = fs.readFileSync(path.join(project, '.claude/system-version'), 'utf8').trim(); } catch {}
     const want = fs.readFileSync(path.join(v.master, 'VERSION'), 'utf8').trim();
     if (!verNewer(want, have)) return { ok: true, msg: `The system is already on the latest version (${have}).` };
-    execFileSync('bash', [path.join(v.master, 'install.sh'), project], { timeout: 40000, stdio: 'ignore' });
+    execFileSync('bash', [path.join(v.master, 'install.sh'), project], { timeout: 40000, stdio: ['ignore', 'ignore', 'pipe'], cwd: project });
     return { ok: true, msg: `The system was updated from ${have} to ${want}. The new rules text is read from the next fresh chat; the checks already use the new version. The changed system files are uncommitted: include them in the next commit.` };
-  } catch (e) { return { ok: false, msg: `The system update failed (${String(e.message || e).split('\n')[0].slice(0, 120)}). Nothing was installed.` }; }
+  } catch (e) { const why = String(e.stderr || '').trim().split('\n').filter(Boolean).slice(-2).join(' / ').slice(0, 220); return { ok: false, msg: `The system update failed (${String(e.message || e).split('\n')[0].slice(0, 120)}${why ? `; the installer said: ${why}` : ''}). Nothing was installed.` }; }
 }
 // "stop" / "pause" / "cancel" (alone, or with everything / all / it / now / working / please) ends his standing approval; nothing else ends it.
 const STOP = /^\s*(?:(?:ok(?:ay)?|alright|please)\b[\s,.!:-]*)?(?:stop|pause|cancel|never\s?mind|hold\s+on|wait)(?:\s+(?:everything|all|it|now|working|please|that|there))*[\s.!]*$/i;

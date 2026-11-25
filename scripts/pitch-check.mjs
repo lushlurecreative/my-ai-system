@@ -19,7 +19,7 @@ export function pitchGate(root, name) {
   if (noProfile.length) return `The country profile for ${country} is empty under: ${noProfile.join(', ')}.`;
   // findings
   const findings = []; for (const l of caseTxt.split('\n')) { const m = l.match(/^\s*-\s*(F\d+)\s*\|\s*(strength|weakness)\s*\|\s*([123])\s*\|\s*([^|]{15,})\|\s*(\S.*)$/i); if (m) findings.push({ id: m[1].toUpperCase(), kind: m[2].toLowerCase(), sev: Number(m[3]), text: m[4].trim(), ev: m[5].trim() }); }
-  if (findings.length < 3) return `CASE.md lists ${findings.length} findings; at least 3 are required, in the form "- F1 | weakness | 3 | what we found | evidence file or link". List everything the research found, not a selection.`;
+  if (findings.length < 2 || !findings.some((f) => f.kind === 'weakness' && f.sev >= 2)) return `CASE.md lists ${findings.length} finding(s); a pitch needs at least 2 findings including at least one real weakness of severity 2 or 3 to call out, in the form "- F1 | weakness | 3 | what we found | evidence file or link". List everything the research found, not a selection; if the research and the audit genuinely found nothing to call out, this business is not a pitch candidate: skip it and say why.`;
   const badEv = findings.filter((f) => !evOk(f.ev)); if (badEv.length) return `These findings have no real evidence (a file that exists or a link): ${badEv.map((f) => f.id).join(', ')}.`;
   if (new Set(findings.map((f) => f.id)).size !== findings.length) return 'CASE.md repeats a finding number.';
   // cost

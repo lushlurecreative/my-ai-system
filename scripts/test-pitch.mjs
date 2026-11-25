@@ -16,6 +16,8 @@ const setup = (o = {}) => {
   fs.writeFileSync(P('docs/pitch/flor/MESSAGES.md'), `## Message 1\n${m1.join('\n')}\n## Message 2\n${o.m2 === undefined ? '- You have no website of your own, only a link page. | F3\n- Here is our example: https://example.com/flor | ask' : o.m2}\n`);
 };
 setup(); t('pitch gate: complete case and messages -> passes', pitchGate(R, 'flor'), null);
+setup(); fs.writeFileSync(P('docs/pitch/flor/CASE.md'), fs.readFileSync(P('docs/pitch/flor/CASE.md'), 'utf8').replace(/^- F2 .*$/m, '').replace(/^- F3 .*$/m, '')); t('pitch gate: only one finding -> refused with the plain reason', /at least 2 findings/.test(pitchGate(R, 'flor') || ''), true);
+setup(); fs.writeFileSync(P('docs/pitch/flor/CASE.md'), fs.readFileSync(P('docs/pitch/flor/CASE.md'), 'utf8').replace(/^- F3 .*$/m, '').replace(/^- F3 \|.*$/m, '')); t('pitch gate: two findings with one real weakness -> the finding count is no longer the problem', /at least 2 findings/.test(pitchGate(R, 'flor') || ''), false);
 setup({ noCost3: true }); t('pitch gate: weakness with no cost line -> refused', /Cost/.test(pitchGate(R, 'flor') || ''), true);
 setup({ strengthSev: 1 }); t('pitch gate: compliment on a weak strength -> refused', /compliment/.test(pitchGate(R, 'flor') || ''), true);
 setup({ m1: ['- Good morning. | intro', '- See https://example.com/flor | F1', '- Many never arrive. | cost F1'] }); t('pitch gate: link in the first message -> refused', /first message contains a link/.test(pitchGate(R, 'flor') || ''), true);

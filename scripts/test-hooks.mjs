@@ -998,6 +998,11 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('time cap: after 30 active minutes the builder is asked for one plain line', decision(slow) === 'block' && /minutes/.test(slow.reason || ''), true);
   const slow2 = run('done-check.mjs', { session_id: 'clk1', last_assistant_message: 'Working on it.' });
   t('time cap: asked only once', /about \d+ minutes/.test(slow2?.reason || ''), false);
+  fs.writeFileSync(path.join(T, '.claude/task-clock.json'), JSON.stringify({ title: 'x', active: 61 * 60000, last: Date.now(), warned: true, recorded: false }));
+  t('hard time limit: after 60 active minutes with no message from Shaun, a tool call is refused', decision(run('scope-guard.mjs', { tool_name: 'Bash', tool_input: { command: 'ls' } })), 'deny');
+  t('hard time limit: the builder is allowed to stop and report', decision(run('done-check.mjs', { session_id: 'clk2', last_assistant_message: 'Report.' })) === 'block', false);
+  run('approve.mjs', { prompt: 'keep going please' });
+  t('hard time limit: Shaun\'s next message opens a new window', decision(run('scope-guard.mjs', { tool_name: 'Bash', tool_input: { command: 'ls' } })) === 'deny' && /Time limit/.test(JSON.stringify(run('scope-guard.mjs', { tool_name: 'Bash', tool_input: { command: 'ls' } }))), false);
   fs.rmSync(path.join(T, '.claude/task-clock.json'), { force: true });
   // review tiers on the done check: analysis / docs-only work needs no verdict
   task('DONE', [], ['findings in docs/NEXT.md'], '', { type: 'ANALYSIS', done: ['[x] looked'], ledger: ['[x] page'] });

@@ -890,6 +890,8 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   }
   t('design gate: references with fresh dated screenshots in the trade library count as opened (no new visits)', has({ opened: 0, library: true }, 'actually opened'), false);
   t('design gate: a stale library (older than 90 days) does not count -> refused', has({ opened: 0, library: 'stale' }, 'actually opened'), true);
+  t('design gate: commentary about the source on the page ("on her Instagram (October 14, 2026)") -> refused', (() => { build({}); const pg = path.join(T, 'sites/nuit/index.html'); fs.appendFileSync(pg, '\n<p>Nuit, on her Instagram (October 14, 2026)</p>\n'); const r = designGate(T, path.join(os.tmpdir(), 'ais-design-transcript.jsonl')) || ''; return /commentary about where its content came from/.test(r); })(), true);
+  t('design gate: a photo credit line (CC BY via Wikimedia Commons) on the page -> refused', (() => { build({}); const pg = path.join(T, 'sites/nuit/index.html'); fs.appendFileSync(pg, '\n<p>Photo: CC BY 4.0, via Wikimedia Commons</p>\n'); const r = designGate(T, path.join(os.tmpdir(), 'ais-design-transcript.jsonl')) || ''; return /commentary about where its content came from/.test(r); })(), true);
   t('design gate: borrowing from a local competitor -> refused', has({ localBorrow: true }, 'local competitor'), true);
   t('design gate: no local competitors listed as what to avoid -> refused', has({ noAvoid: true }, 'NOT to do'), true);
   t('design gate: critic round without the anchors line -> refused', (() => { const r = designGate(T, build({ badCritic: false, noAnchors: true })); return typeof r === 'string' && /ANCHORS/.test(r); })(), true);

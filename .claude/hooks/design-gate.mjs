@@ -224,6 +224,18 @@ export function designGate(root, transcriptPath, opts = {}) {
   }
   // 5. layout not repeated
   let site = path.resolve(root, siteRaw); try { if (fs.statSync(site).isDirectory()) site = path.join(site, 'index.html'); } catch { return `The Site path on the card (${siteRaw}) does not exist.`; }
+  // no commentary on the site: it carries the business's own voice, never notes about where the words or photos came from
+  { let html = ''; try { html = readTree(path.dirname(site), /\.html?$/i); } catch { /* ignore */ }
+    const visible = html.replace(/<(script|style|svg|noscript)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
+    const MON = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|ene|abr|ago|dic)[a-z]*\\.?';
+    const COMMENTARY = [
+      /\b(?:on|from|via)\s+(?:her|his|their|its)\s+(?:instagram|facebook|tiktok|google|website|page|profile)\b/i, /\ben\s+su\s+(?:instagram|facebook|tiktok|perfil|p[a\u00e1]gina)\b/i,
+      /\b(?:according to|as seen on|as posted on|taken from|sourced from|as reported by|seg[u\u00fa]n (?:su|el|la) (?:instagram|facebook|perfil))\b/i, /\b(?:source|fuente)\s*:/i,
+      new RegExp(`\\(\\s*${MON}\\s+\\d{1,2},?\\s+20\\d\\d\\s*\\)`, 'i'), /\(\s*\d{1,2}\s+de\s+[a-z\u00e1\u00e9\u00ed\u00f3\u00fa]+\s+(?:de\s+)?20\d\d\s*\)/i,
+      /\b(?:CC[- ]BY|creative commons|wikimedia|unsplash|pexels|pixabay)\b/i, /\b(?:dossier|research record|replace later|lorem ipsum|placeholder text|verified by)\b/i,
+    ];
+    const hit = COMMENTARY.map((r) => visible.match(r)).find(Boolean);
+    if (hit) return `The page contains commentary about where its content came from ("${String(hit[0]).slice(0, 60)}"). A site carries the business's own voice only: no source notes, dates, attributions, credits or research remarks (the only allowed label is the visible sample-photo badge). Remove it. If a photo's licence demands a credit line, use a different stand-in photo that needs none.`; }
   const dirs = Array.isArray(sys.designSitesDirs) ? sys.designSitesDirs : [];
   if (dirs.length) {
     const mine = skeleton(fs.readFileSync(site, 'utf8')); let worst = { s: 0, f: '' };

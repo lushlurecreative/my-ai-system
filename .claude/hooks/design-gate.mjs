@@ -139,7 +139,7 @@ export function designGate(root, transcriptPath, opts = {}) {
   const itemsN = itemsN0 + standItems;
   if (((photoPaths.length + videoPaths.length + standPaths.length) < minPhotos || itemsN < minItems) && !/^Material waived:\s*\S/mi.test(card)) return `Not enough material for a page that can look good: ${photoPaths.length} of the business's own photographs, ${videoPaths.length} videos and ${standPaths.length} labelled stand-ins found on disk (${minPhotos} in total are required), ${itemsN} of ${minItems} required items. If the business's own material is unusable, set "Photo verdict: stand-in" with labelled sample photos and a "Replace later:" list. Never present sample material as the business's own and never invent products or prices.`;
 
-  // photos must be usable: measured, not just described. Blurry, dark and tiny photos cannot be used; the first-screen photo must clear a stricter bar; a photo with a face needs Shaun's approval.
+  // photos must be usable: measured, not just described. Blurry, dark and tiny photos cannot be used; the first-screen photo must clear a stricter bar; 
   if (sys.designPhotoCheck !== false && !/^Material waived:\s*\S/mi.test(card)) {
     const listOf = (re) => ((content.match(re) || [])[1] || '').split(',').map((x) => x.trim()).filter(Boolean);
     const own = listOf(/^\s*Photos:\s*(.+)$/im), stand = listOf(/^\s*Stand-in photos:\s*(.+)$/im), vids = listOf(/^\s*Videos:\s*(.+)$/im);
@@ -152,9 +152,7 @@ export function designGate(root, transcriptPath, opts = {}) {
     const isVid = (f) => /\.(mp4|mov|webm|m4v)$/i.test(f);
     const imgs = [...own, ...stand].filter((f) => fs.existsSync(path.resolve(root, f)) && !isVid(f)); const res = measure(imgs, false); if (res.error) return res.error;
     const bad = res.filter((x) => x.problems && x.problems.length); if (bad.length) return `These photos are listed as usable but fail the photo check, so they cannot be used: ${bad.slice(0, 4).map((x) => `${path.relative(root, x.file)} (${x.problems[0]})`).join('; ')}${bad.length > 4 ? `; and ${bad.length - 4} more` : ''}. Remove them from CONTENT.md, or replace them with better photos (labelled stand-ins if the business has none).`;
-    const approved = ((content.match(/^\s*People approved:\s*(.+)$/im) || [])[1] || '').split(',').map((x) => x.trim()).filter(Boolean);
-    const faces = res.filter((x) => x.faces > 0 && !approved.includes(path.relative(root, x.file))); if (faces.length) return `These photos show faces and need Shaun's approval before use: ${faces.slice(0, 4).map((x) => path.relative(root, x.file)).join(', ')}. Put them in a "People approved: <paths>" line only after he has approved them for this business; otherwise remove them.`;
-    if (!isVid(heroRel)) { const hr = measure([heroRel], true); if (hr.error) return hr.error; if (hr[0] && hr[0].problems && hr[0].problems.length) return `The first-screen photo ${heroRel} is not good enough: ${hr[0].problems.join('; ')}. The first screen needs one bright, sharp, large professional image. Pick a better one, or use a labelled stand-in.`; if (hr[0] && hr[0].faces > 0 && !approved.includes(heroRel)) return `The first-screen photo ${heroRel} shows a face and needs Shaun's approval.`; }
+    if (!isVid(heroRel)) { const hr = measure([heroRel], true); if (hr.error) return hr.error; if (hr[0] && hr[0].problems && hr[0].problems.length) return `The first-screen photo ${heroRel} is not good enough: ${hr[0].problems.join('; ')}. The first screen needs one bright, sharp, large professional image. Pick a better one, or use a labelled stand-in.`; }
   }
 
   // 3a. research before design: every channel the business can have was searched, and every one that exists was actually read

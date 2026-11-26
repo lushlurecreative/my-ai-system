@@ -2,7 +2,7 @@
 // Design gate. A task with Type: DESIGN (anything that decides how a page, site or screen looks) cannot reach DONE unless the session's own record shows the work was really done:
 // same-trade references actually opened, design skills actually run, a concept, phone + desktop renders, and at least two rounds with the independent design-critic, the last one a PASS.
 // The record is the session transcript, which the harness writes; the builder cannot edit it, and what it says about itself on the card does not count.
-import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { spawnSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { spawnSync } from 'node:child_process'; import crypto from 'node:crypto'; import { fileURLToPath } from 'node:url';
 import { readTask, taskCardText, system, globRe, transcriptLines } from './common.mjs';
 
 const DEFAULT_SKILLS = ['impeccable', 'taste', 'frontend-design', 'ui-ux', 'design-', 'polish', 'critique', 'typeset', 'layout', 'colorize', 'animate', 'distill', 'bolder', 'quieter', 'delight', 'overdrive', 'adapt', 'harden'];
@@ -236,6 +236,19 @@ export function designGate(root, transcriptPath, opts = {}) {
     ];
     const hit = COMMENTARY.map((r) => visible.match(r)).find(Boolean);
     if (hit) return `The page contains commentary about where its content came from ("${String(hit[0]).slice(0, 60)}"). A site carries the business's own voice only: no source notes, dates, attributions, credits or research remarks (the only allowed label is the visible sample-photo badge). Remove it. If a photo's licence demands a credit line, use a different stand-in photo that needs none.`; }
+  // the same photo is never used twice on one page, and never on two different businesses' sites
+  { const pageDir = path.dirname(site); const IMG = /\.(jpe?g|png|webp|avif|gif)$/i; const MINB = 20000;
+    let html = ''; try { html = readTree(pageDir, /\.html?$/i); } catch { /* ignore */ }
+    const used = []; for (const m of html.matchAll(/<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi)) { const u = m[1].split(/[?#]/)[0]; if (/^(?:https?:)?\/\//i.test(u) || /^data:/i.test(u) || !IMG.test(u)) continue; const f = path.resolve(pageDir, decodeURIComponent(u)); try { if (fs.statSync(f).size >= MINB) used.push(f); } catch { /* missing file: another check's job */ } }
+    const sha = (f) => { try { return crypto.createHash('sha1').update(fs.readFileSync(f)).digest('hex'); } catch { return ''; } };
+    const seen = new Map(); for (const f of used) { const h = sha(f); if (!h) continue; if (seen.has(h)) return `The same photo is used twice on this page (${path.relative(pageDir, f)}${seen.get(h) !== f ? ` and ${path.relative(pageDir, seen.get(h))}` : ''}). Use a different photo for each place, or drop the repeat.`; seen.set(h, f); }
+    const others = Array.isArray(sys.designSitesDirs) ? sys.designSitesDirs : [];
+    if (used.length && others.length) {
+      const bySize = new Map(); for (const f of used) { const z = fs.statSync(f).size; (bySize.get(z) || bySize.set(z, []).get(z)).push(f); }
+      const slugSelf = slug.toLowerCase(); const selfK = [slugSelf, slugSelf.replace(/-(?:v\d+|new|rebuild|test)$/, '')];
+      for (const idx of priorSites(root, others, path.resolve(site), selfK)) { const od = path.dirname(idx); if (od === pageDir) continue; const stack = [od]; let n = 0;
+        while (stack.length && n < 600) { const d = stack.pop(); let es = []; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; } for (const e of es) { const f = path.join(d, e.name); if (e.isDirectory()) { if (!/^(node_modules|\.git)$/i.test(e.name)) stack.push(f); } else if (IMG.test(e.name)) { n++; let z = 0; try { z = fs.statSync(f).size; } catch { continue; } const mine = bySize.get(z); if (mine) { const h = sha(f); if (h && mine.some((x) => sha(x) === h)) return `A photo on this page (${path.relative(pageDir, mine[0])}) is the same file used on another business's site (${path.relative(root, od)}). Each business gets its own photos: pick a different stand-in photo, never one already used elsewhere.`; } } } } } }
+  }
   const dirs = Array.isArray(sys.designSitesDirs) ? sys.designSitesDirs : [];
   if (dirs.length) {
     const mine = skeleton(fs.readFileSync(site, 'utf8')); let worst = { s: 0, f: '' };

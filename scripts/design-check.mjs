@@ -8,7 +8,7 @@
 //     "critics": ["<full text of each design-critic round, in order>"],
 //     "edits": [{ "after_round": 1, "file": "page.html" }],  page changes the run made after a critic round (round numbers start at 1)
 //     "viewed": ["shots/phone.png", "shots/desktop.png"] }   renders the run opened itself after its last change
-// It also needs the same files a chat task needs: REFERENCES.md, CONCEPT.md, CONTENT.md, shots/ (see "Design work" in CLAUDE.md). A listed reference whose screenshot file is missing or tiny does not count as opened.
+// It also needs the same files a chat task needs: REFERENCES.md, CONCEPT.md, CONTENT.md, shots/ (see docs/design/RULES.md). A listed reference whose screenshot file is missing or tiny does not count as opened.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { designGate, pngSize } from '../.claude/hooks/design-gate.mjs';
 const [rootArg, name] = process.argv.slice(2); if (!rootArg || !name) { console.log('usage: node design-check.mjs <project-folder> <design-name>'); process.exit(2); }

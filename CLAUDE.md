@@ -50,7 +50,7 @@ Shaun never sees a browser. Never open a window, never touch his own browser or 
 - If the headless tool is missing or fails, say so in plain words and use fetch or curl. Never fall back to a visible browser.
 
 ## Design work (how a customer's page, site or screen looks)
-Anything that decides how a customer site looks is a task with `Type: DESIGN` (a small change to a page that already exists, such as wording, colour, spacing or a bug, stays a BUILD card with the line `Design edit: small`). A DESIGN task follows `docs/design/RULES.md`, which you read first; a hook checks the work. Projects that do not build customer sites never need it. When you show Shaun any page or screen you made, start with a working address he can click and use in his own browser (a local preview with the server left running, or a published preview), say you opened it yourself first, and treat screenshots as extra, never as the only thing, never one tall image.
+Anything that decides how a customer site looks is a task with `Type: DESIGN` (a small change to a page that already exists, such as wording, colour, spacing or a bug, stays a BUILD card with the line `Design edit: small`). A DESIGN task follows `docs/design/RULES.md`, which you read first; a hook checks the work. Projects that do not build customer sites never need it.
 
 ## Pitch work (anything written or sent to a business)
 A message to a business is written from a case file and passes `scripts/pitch-check.mjs` before it is queued or sent. The full rules are in `docs/pitch/RULES.md`; read it before any such work.

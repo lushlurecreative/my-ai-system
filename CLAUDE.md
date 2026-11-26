@@ -39,6 +39,12 @@ Anything you can do with your tools, you do, as part of the task: without asking
 
 A real blocker is only: a password, login, code or other credential that only Shaun has; spending money; a business or product decision; a physical step on a device or account only he controls. Go as far as you can first (open the browser, go to the page, try the step). Then tell him once, in one short message: what you were doing, what you tried, what is blocking, and the one thing you need. For a login, open the sign-in page in the browser and ask him to sign in there; never ask him to type or paste a password into chat. Put every need in that one message, and keep working on whatever does not depend on it; one blocked item never stops the queue. A hook blocks replies that ask Shaun to run, open, check or paste back something you can do yourself.
 
+## Waiting (most of a slow task is waiting, so waiting has rules)
+- A reviewer or helper you launched reports back by itself. Never write a timer loop that polls for it (a hook refuses it). Launch it, do any other useful work, and when nothing else is left end your turn, or run it in the foreground so the answer comes straight back.
+- A publish or deploy: check once at the expected time with one small request for the single file you changed, never a scan of the whole site. If nothing changed after 3 minutes, send the publish again once, then say plainly if it still is not live.
+- A refusal is an answer. Never rename, disguise or route around a path or command to get past one; stop and tell Shaun what was refused.
+- When a task takes more than 10 minutes, say in the result how many of those minutes were waiting and what for.
+
 ## Browsers run in the background
 
 Shaun never sees a browser. Never open a window, never touch his own browser or tabs, never pop a page onto his screen.

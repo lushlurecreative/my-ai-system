@@ -186,6 +186,8 @@ const HEADLESS_OFF = /\bclaude\b[^\n;|&]*(?:\s-p\b|\s--print\b)[^\n;|&]*(?:--dis
 export function checkBash(root, cmd, transcriptPath) {
   const c = String(cmd || '');
   { const b = checkBrowser(c); if (b) return b; }
+  // never poll for a helper's answer: it arrives by itself. A timer loop that waits on a reviewer, a helper agent or the session record wastes the whole wait.
+  if (/\b(until|while)\b[\s\S]*\bsleep\s+\d/.test(c) && /(reviewer|subagents?|agent-|\.jsonl|transcript|task-notification|VERDICT)/i.test(c)) return deny('Do not wait for a reviewer or helper with a timer loop: its answer arrives by itself. Launch it, do any other useful work, and when there is nothing else, end your turn (or run it in the foreground so the answer comes straight back). A wait on a timer is a defect.');
   if (designOn(root) && HEADLESS_OFF.test(quiet(c))) return deny('Do not run a separate headless Claude with the design skills switched off to make customer designs. Design in this session (or with Agent helpers), using the design skills, so the work can be checked.');
   if (/TASK\.md/.test(c) && /Status:\s*DONE/i.test(c) && /(>>?|\btee\b|\bsed\s+-\w*i|\bpython3?\b|\bnode\b|\bperl\b|\bawk\b)/.test(c)) { const g = designCardEdit(root, c, transcriptPath); if (g) return g; }
   { const m = checkMasterTouch(root, c); if (m) return m; }

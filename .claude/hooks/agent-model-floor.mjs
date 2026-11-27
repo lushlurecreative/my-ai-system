@@ -2,7 +2,7 @@
 // PreToolUse for Agent/Task. The model comes from the helper's agent file (.claude/agents/<name>.md), not from whoever launches it.
 // (1) A listed agent runs on its assigned model; asking for a different one is denied. (2) An unlisted helper type gets Sonnet; Opus/Fable are denied unless system.json allowExpensiveHelpers. (3) Cap on helper runs per session (system.json maxHelpers, default 6). Fails open.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import crypto from 'node:crypto';
-import { deny, system, projectRoot, reviewNeeded, tickClock, taskTitle } from './common.mjs';
+import { deny, system, projectRoot, reviewNeeded, tickClock, taskTitle, cardId } from './common.mjs';
 const norm = (m) => { const s = String(m || '').toLowerCase(); return /haiku/.test(s) ? 'haiku' : /sonnet/.test(s) ? 'sonnet' : /opus/.test(s) ? 'opus' : /fable/.test(s) ? 'fable' : ''; };
 export function assignedModel(root, name) {
   if (!/^[\w-]+$/.test(name || '')) return '';
@@ -20,7 +20,7 @@ export function decide(input, root) {
       if (need === 'light' && name === 'reviewer') return deny('This change does not touch money, logins, protected files or security, so use the cheaper reviewer: subagent_type reviewer-light.');
       if (need === 'full' && name === 'reviewer-light') return deny('This change touches money, logins, protected files or security, so use the full reviewer: subagent_type reviewer.');
       const max = Number.isFinite(sys.maxReviews) ? sys.maxReviews : 2;
-      const f = path.join(os.tmpdir(), `ais-reviews-${String(input?.session_id || 'x').replace(/[^\w-]/g, '')}-${crypto.createHash('sha1').update(taskTitle(root)).digest('hex').slice(0, 8)}.count`);
+      const f = path.join(os.tmpdir(), `ais-reviews-${String(input?.session_id || 'x').replace(/[^\w-]/g, '')}-${cardId(root)}.count`);
       let n = 0; try { n = Number(fs.readFileSync(f, 'utf8')) || 0; } catch {}
       if (n >= max) return deny(`Two reviews per task is the limit. Do not review again. Fix every blocker the reviewer named, log its minors in docs/NEXT.md, and if a blocker is still open, stop and tell Shaun in one plain line what is open and why.`);
       try { fs.writeFileSync(f, String(n + 1)); } catch {}

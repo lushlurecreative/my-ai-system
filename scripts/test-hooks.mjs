@@ -85,6 +85,12 @@ t('analyst run 1 of 1 -> allow', decision(agent({})), 'allow'); t('analyst run 2
   t('reviewer: second review allowed', decision(rv('rv1', { subagent_type: 'reviewer' })), 'allow');
   t('reviewer: third review refused (two per task)', decision(rv('rv1', { subagent_type: 'reviewer' })), 'deny');
   t('reviewer: security reviewer allowed on high-risk work', decision(rv('rv1', { subagent_type: 'security' })), 'allow');
+  task('ACTIVE', ['src/lib/pricing.ts'], [], '', { done: ['[ ] a different task on the same title'] }); // a brand-new card in the same session
+  t('reviewer: a new task card starts its own count (first review allowed)', decision(rv('rv1', { subagent_type: 'reviewer' })), 'allow');
+  t('reviewer: the new card still gets only two', decision(rv('rv1', { subagent_type: 'reviewer' })) === 'allow' && decision(rv('rv1', { subagent_type: 'reviewer' })) === 'deny', true);
+  task('ACTIVE', ['src/lib/pricing.ts'], [], '', { done: ['[x] a different task on the same title'] }); // same card, box ticked
+  t('reviewer: ticking a box does not start a new count', decision(rv('rv1', { subagent_type: 'reviewer' })), 'deny');
+  task('ACTIVE', ['src/lib/pricing.ts'], [], ''); // back to the first card
   task('ACTIVE', ['src/pages/**'], [], ''); // ordinary work
   t('reviewer: ordinary work -> the Opus reviewer is refused', decision(rv('rv2', { subagent_type: 'reviewer' })), 'deny');
   t('reviewer: ordinary work -> the light reviewer is allowed', decision(rv('rv2', { subagent_type: 'reviewer-light' })), 'allow');

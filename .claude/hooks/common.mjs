@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'; import { lists } from './protected-list.mjs'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
+import { execFileSync } from 'node:child_process'; import { lists } from './protected-list.mjs'; import fs from 'node:fs'; import crypto from 'node:crypto'; import os from 'node:os'; import path from 'node:path';
 export const deny = (reason) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
 export function rel(root, p) { p = String(p || ''); if (path.isAbsolute(p)) p = path.relative(root, p); return p.replace(/^\.\//, ''); }
 export function readTask(root) {
@@ -37,6 +37,8 @@ export function readGoAll(root) { try { const a = JSON.parse(fs.readFileSync(pat
 export function cardCovers(root, values, statuses = ['ACTIVE']) { const t = readTask(root); if (!statuses.includes(t.status)) return false; const low = values.map((v) => String(v).toLowerCase()); return (t.allowed || []).some((a) => low.includes(String(a).toLowerCase())); }
 export function taskCardText(root) { let t = ''; try { t = fs.readFileSync(path.join(root, 'docs/TASK.md'), 'utf8'); } catch { return ''; } return t.split(/^Evidence:/m)[0]; }
 export const taskTitle = (root) => { const m = taskCardText(root).match(/^Task:\s*\n\s*-\s*(.+)$/m); return (m ? m[1] : '(untitled)').replace(/[\t\n]/g, ' ').slice(0, 120); };
+// Identity of the current task card: its title, type and Done means lines (ticks ignored). A new card gets a new identity, so per-task counts (reviews) start again; ticking boxes or adding evidence does not change it.
+export function cardId(root) { const t = taskCardText(root); const dm = (t.match(/^Done means:\s*\n((?:[ \t]*-.*\n?)*)/m) || [, ''])[1].split('\n').map((l) => l.replace(/^\s*-\s*(\[[ xX]\]\s*)?/, '').trim()).filter(Boolean).join('|'); const ty = (t.match(/^Type:\s*(\w+)/m) || [])[1] || 'BUILD'; return crypto.createHash('sha1').update(`${taskTitle(root)}\n${ty}\n${dm}`).digest('hex').slice(0, 10); }
 // An ACTIVE card that names the word or file counts as the approval for a connector message about it.
 export function cardMentions(root, token, statuses = ['ACTIVE']) { if (!statuses.includes(readTask(root).status)) return false; const esc = String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return new RegExp(`(?<![A-Za-z0-9])${esc}(?![A-Za-z0-9])`, 'i').test(taskCardText(root)); }
 // One append-only line per protected-file edit the task card allowed: time, file, task. Only a hook writes it.

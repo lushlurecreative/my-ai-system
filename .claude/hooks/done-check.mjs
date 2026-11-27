@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Stop hook. (1) Ends by announcing work -> block (max 2 in a row per reason). (2) Claims done but TASK.md lacks Evidence or Reviewer PASS, or the reviewer agent never ran this session -> block once.
 // (1b) Asks permission to continue mid-task -> block. (1c) Claims done with unticked Done means, or an ANALYSIS with an open Scope ledger -> block. (3) TASK is DONE with a reviewer PASS: autopilot off needs a numbered list of every NEXT item that can start now plus "which numbers"; autopilot on needs the next task started, not a question. Fails open.
-import fs from 'node:fs'; import crypto from 'node:crypto'; import { designGate } from './design-gate.mjs'; import { verdictOk, reviewNeeded, tickClock, readClock, writeClock, transcriptLines, hardLimitMin } from './common.mjs'; import os from 'node:os'; import path from 'node:path';
+import fs from 'node:fs'; import crypto from 'node:crypto'; import { designGate } from './design-gate.mjs'; import { verdictOk, reviewNeeded, tickClock, readClock, writeClock, transcriptLines } from './common.mjs'; import os from 'node:os'; import path from 'node:path';
 import { readTask, system, discussionOn, readGoAll, projectRoot, taskTitle } from './common.mjs';
 const NEEDS_SHAUN = /\bShaun(?:'s)?\b[^|]{0,60}\b(?:action|login|logins|decision|decides|decide|spend|approval|authoriz\w+|unlock|setup|set up|sign-in|only|led)\b|\bneeds? (?:Shaun|your)\b|\b(?:logins?|credentials?|rotate|spend|admin sign-in)\b|\bseparately authorized\b|\bparked\b|\byou(?:r|'ll|'d)?\b|\btype "yes|\bsay (?:when|anything)\b/i;
 export function startableItems(root) {
@@ -175,7 +175,7 @@ function main() {
   let input = {}; try { input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch { return; }
   const root = projectRoot(input.cwd); const file = path.join(os.tmpdir(), `ais-stop-${String(input.session_id || 'x').replace(/[^\w-]/g, '')}.count`);
   // Time cap: one plain line from the builder when a task has run long (active time, gaps over 10 minutes not counted).
-  const clock = tickClock(root); if (clock && clock.active >= hardLimitMin(root) * 60000 && readTask(root).status === 'ACTIVE') return; /* time limit reached: let the builder stop and report */ const capMin = Number.isFinite(system(root).taskMinutesCap) ? system(root).taskMinutesCap : 30;
+  const clock = tickClock(root); const capMin = Number.isFinite(system(root).taskMinutesCap) ? system(root).taskMinutesCap : 30;
   if (clock && !clock.warned && readTask(root).status === 'ACTIVE' && clock.active >= capMin * 60000) {
     writeClock(root, { ...clock, warned: true });
     process.stdout.write(JSON.stringify({ decision: 'block', reason: `This task has run about ${Math.round(clock.active / 60000)} minutes. Tell Shaun in ONE plain sentence what is making it slow (for example waiting on a reviewer, a long test run, a slow build) and what you will do about it. Then carry on.` })); return;

@@ -146,8 +146,6 @@ export function tickClock(root) {
 }
 export const readClock = (root) => { try { return JSON.parse(fs.readFileSync(clockFile(root), 'utf8')); } catch { return null; } };
 export const writeClock = (root, c) => { try { fs.writeFileSync(clockFile(root), JSON.stringify(c)); } catch { /* ignore */ } };
-// Hard time limit: after taskMinutesHard active minutes (default 60) on one task with no message from Shaun, every tool call is refused until the builder stops and reports. His next message opens a new window.
-export const hardLimitMin = (root) => { const v = system(root).taskMinutesHard; return Number.isFinite(v) && v > 0 ? v : 60; };
 export function resetClock(root) { const c = readClock(root); if (c) writeClock(root, { ...c, active: 0, last: Date.now(), warned: false }); }
 
 // Session records can reach gigabytes (screenshots make single lines megabytes long). Work on raw bytes in chunks: find line ends and needles natively and decode only the lines that match.

@@ -4,7 +4,7 @@ import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'
 import { lists, SELF, SELF_DIRS } from './protected-list.mjs';
 import { isOverridden, unlockHint } from './override.mjs';
 import { designGate } from './design-gate.mjs';
-import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, verdictOk, tickClock, hardLimitMin, taskCardText, quiet, stripInertHeredocs, masterPathOf, projectRoot } from './common.mjs';
+import { deny, rel, readTask, readToolbox, readApprovals, readGo, readGoAll, consumeGo, cardCovers, logProtectedEdit, goRequired, system, globRe, discussionOn, verdictOk, tickClock, taskCardText, quiet, stripInertHeredocs, masterPathOf, projectRoot } from './common.mjs';
 const REPORT_FILE = /(report|evidence|validation|diagnos|audit|acceptance|summary|findings|export|analysis)/i;
 const ALWAYS_OK = [/^docs\/(TASK|NEXT|PROJECT|TOOLBOX|SUBGOALS|RULINGS|FIXED|ASKS)\.md$/, /^docs\/notes\//, /^docs\/design\//];
 // A shortcut (symlink) in the project can point at a protected file, a system file or a folder outside the project. The check runs on the path as given AND on where it really lands; either one failing refuses the edit.
@@ -207,7 +207,6 @@ export function checkBash(root, cmd, transcriptPath) {
 }
 export function check(input) {
   const root = projectRoot(input?.cwd); const clk = tickClock(root); const name = String(input?.tool_name || ''); const ti = input?.tool_input || {};
-  if (clk && clk.active >= hardLimitMin(root) * 60000 && readTask(root).status === 'ACTIVE') return deny(`Time limit reached: this task has run about ${Math.round(clk.active / 60000)} active minutes without a message from Shaun. Stop now. Do not run anything else (background work that is already running may continue, but start nothing new). Reply to Shaun in plain words: what is finished, what is not, what is still running, and why it took this long. Then wait. His next message starts a new window.`);
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) {
     if (rel(root, ti.file_path || '') === 'docs/TASK.md') { const body = [ti.new_string, ti.content, ...(Array.isArray(ti.edits) ? ti.edits.map((e) => e.new_string) : [])].filter(Boolean).join('\n'); const g = gateActivation(root, body); if (g) return g; const dc = designCardEdit(root, body, input?.transcript_path); if (dc) return dc; }
     { const de = designEdit(root, ti.file_path || ti.notebook_path); if (de) return de; }

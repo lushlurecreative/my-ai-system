@@ -11,6 +11,17 @@ Written 2026-11-27 for whoever takes over from the current architect. Shaun is t
 - `.claude/hooks/*.mjs`, `.claude/agents/`, `scripts/`, `install.sh`: the code that enforces the rules; `node scripts/test-hooks.mjs` runs the tests. Projects get the system through `install.sh` and update with the typed words `yes, update`.
 - The Site Launch Pros project (repo `lushlurecreative/finalise-dash`, builder chat runs on Shaun's Mac and cannot be reached from here): its goal is in `docs/PROJECT.md`, his dated decisions in `docs/RULINGS.md`, the pipeline in `pipeline/`.
 
+## Repositories (all under github.com/lushlurecreative)
+
+- `my-ai-system`: this master system (public).
+- `finalise-dash`: Site Launch Pros admin and seller app, plus the site-making pipeline in `pipeline/` (public).
+- `sitelaunchpros-engine`: the engine as of 2026-10-30: site generator, sales conversation, WhatsApp connection (baileys), tests; `docs/CLOUD-PLAN.md` and `docs/SITES.md` say where everything lives (private).
+- `sitelaunchpros-sample-sites`: the repo that serves every `<slug>.sitelaunchpros.com` sample site, one folder per site under `public/sites/` (45 as of 2026-11-27) (private).
+- `sitelaunch-engine`: an older Next.js engine from May 2026 (LLM preview generator), apparently superseded (private).
+- `washwise-analyzer`: the WashWise project, separate from Site Launch Pros (public).
+
+The WhatsApp sales engine and conversation handling exist in code (see the engine repo and the finalise-dash commits of 18-19 Nov); what has not happened is any live outreach.
+
 ## The goal (in Shaun's words as relayed)
 
 Site Launch Pros finds small businesses in Cuenca, Ecuador (Spanish, phone-first, WhatsApp). For each one it researches the business, builds a sample site Shaun would be proud to show, writes a truthful pitch and messages it by WhatsApp. It scales to 50 sites and later other countries.

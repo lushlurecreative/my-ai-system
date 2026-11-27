@@ -7,7 +7,8 @@
 //     "opened": [{ "url": "https://...", "screenshot": "docs/design/<name>/refs/01.png" }],   every reference really opened, with the screenshot the browser took
 //     "critics": ["<full text of each design-critic round, in order>"],
 //     "edits": [{ "after_round": 1, "file": "page.html" }],  page changes the run made after a critic round (round numbers start at 1)
-//     "viewed": ["shots/phone.png", "shots/desktop.png"] }   renders the run opened itself after its last change
+//     "viewed": ["shots/phone.png", "shots/desktop.png"],
+//     "owner_approved": "optional: the owner's own words and date; skips the AI critic's verdict when he has accepted the page himself" }   renders the run opened itself after its last change
 // It also needs the same files a chat task needs: REFERENCES.md, CONCEPT.md, CONTENT.md, shots/ (see docs/design/RULES.md). A listed reference whose screenshot file is missing or tiny does not count as opened.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { designGate, pngSize } from '../.claude/hooks/design-gate.mjs';
@@ -36,7 +37,7 @@ critics.forEach((text, i) => {
 });
 for (const v of ev.viewed || []) use('Read', { file_path: path.resolve(dir, String(v)) });
 const tp = path.join(os.tmpdir(), `ais-design-check-${process.pid}.jsonl`); fs.writeFileSync(tp, lines.join('\n') + '\n');
-const card = `Design: ${name}\nTrade: ${ev.trade || ''}\nSite: ${siteRaw}\n${ev.base ? `Base: ${ev.base}\n` : ''}\nRulings applied:\n${(ev.rulings || []).map((r) => `- ${r}`).join('\n')}\n`;
+const card = `Design: ${name}\nTrade: ${ev.trade || ''}\nSite: ${siteRaw}\n${ev.base ? `Base: ${ev.base}\n` : ''}${ev.owner_approved ? `Owner approved: ${ev.owner_approved}\n` : ''}\nRulings applied:\n${(ev.rulings || []).map((r) => `- ${r}`).join('\n')}\n`;
 let reason; try { reason = designGate(root, tp, { card }); } finally { try { fs.rmSync(tp, { force: true }); } catch { /* ignore */ } }
 if (reason) fail(reason);
 console.log(`PROVEN: ${name} passed the design gate (${real.length} references opened with screenshots, ${(ev.skills || []).length} skills, ${critics.length} critic rounds).`);

@@ -262,6 +262,8 @@ export function designGate(root, transcriptPath, opts = {}) {
   const viewedShot = (pred) => uses.some((u) => u.name === 'Read' && u.i > lastEdit && dims.some((d) => pred(d) && path.resolve(String(u.input.file_path || '')) === path.resolve(shots, d.f)));
   if (!viewedShot((d) => d.w > 0 && d.w <= 500) || !viewedShot((d) => d.w >= 1200)) return 'After your last change to the page, open both renders yourself (Read the phone image and the desktop image) and look at them before asking for review. Re-render if the page changed since the renders were taken.';
 
+  // The owner's own approval of the page overrides the AI critic (it is the owner's call, not the critic's): a card line "Owner approved: <his words and the date>" skips this section.
+  if (/^Owner approved:\s*\S/mi.test(card)) return null;
   // 6. the independent critic: 2+ rounds, last one PASS, work changed between rounds, final version is the one reviewed
   const launches = uses.filter((u) => (u.name === 'Agent' || u.name === 'Task') && String(u.input.subagent_type || '').toLowerCase() === 'design-critic');
   const arrived = []; // {text, seq, launch}. Two rounds can have the same words, so a report is never dropped for matching an earlier one; only a copy delivered twice in a row is.

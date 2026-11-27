@@ -266,6 +266,8 @@ export function designGate(root, transcriptPath, opts = {}) {
   if (/^Owner approved:\s*\S/mi.test(card)) return null;
   // 6. the independent critic: 2+ rounds, last one PASS, work changed between rounds, final version is the one reviewed
   const launches = uses.filter((u) => (u.name === 'Agent' || u.name === 'Task') && String(u.input.subagent_type || '').toLowerCase() === 'design-critic');
+  // The critic is advisory by default: at least one round must have run (its findings are applied once), but its verdict never blocks a page. A project can make it block again with designCriticBlocks: true in .claude/system.json.
+  if (sys.designCriticBlocks !== true) return launches.length ? null : 'Run the design-critic once on the finished page (Agent tool, subagent_type design-critic), give it the renders in docs/design/<name>/shots/, and apply what it finds. Its verdict does not block the page, but the round must happen.';
   const arrived = []; // {text, seq, launch}. Two rounds can have the same words, so a report is never dropped for matching an earlier one; only a copy delivered twice in a row is.
   const isReport = (txt) => /VERDICT\W{0,4}\s*(PASS|FAIL)/i.test(txt) && /VIEWED/i.test(txt);
   for (const u of launches) { const txt = results.get(u.id) || ''; if (isReport(txt)) arrived.push({ text: txt, seq: resultPos.get(u.id) || 0, launch: u }); }

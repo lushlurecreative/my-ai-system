@@ -820,7 +820,7 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
 {
   const { designGate } = await import(`${SRC}/.claude/hooks/design-gate.mjs`);
   const png = (w, h) => { const b = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b); b.writeUInt32BE(13, 8); b.write('IHDR', 12); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); return b; };
-  const D = path.join(T, 'docs/design/nuit'); const sys0 = JSON.stringify({ ...(() => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8')); } catch { return {}; } })(), designGate: true, designBaseRequired: true, designPhotoCheck: false, designPaths: ['**/sites/**'], designSitesDirs: [] }) + '\n'; fs.writeFileSync(path.join(T, '.claude/system.json'), sys0);
+  const D = path.join(T, 'docs/design/nuit'); const sys0 = JSON.stringify({ ...(() => { try { return JSON.parse(fs.readFileSync(path.join(T, '.claude/system.json'), 'utf8')); } catch { return {}; } })(), designGate: true, designBaseRequired: true, designCriticBlocks: true, designPhotoCheck: false, designPaths: ['**/sites/**'], designSitesDirs: [] }) + '\n'; fs.writeFileSync(path.join(T, '.claude/system.json'), sys0);
   const avoidUrls = ['https://localpan.ec/', 'https://otrapan.ec/'];
   const urls = ['https://bakeone.com/', 'https://croissanttown.com/menu', 'https://panaderia-luna.ec/', 'https://pastelnoir.co/', 'https://masamadre.shop/', 'https://hornolocal.ec/'];
   const verdictTxt = (v) => `Fix the hero.\nVIEWED: phone.png, desktop.png\nTRADE-RELEVANCE: ok, all bakeries\nRULINGS: checked, kept\nPAIRWISE: Sheet A; three differences; clearly better\nGARBAGE-CASE: thin; does not hold\nANCHORS: resembles the pass anchor; bright photo, big headline, one task, space\nVERDICT: ${v}`;
@@ -867,10 +867,10 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
         lines.push(JSON.stringify(o.forged ? { type: 'assistant', message: { content: [{ type: 'text', text: indented }] } } : { type: 'user', message: { role: 'user', content: indented } }));
       } else res(use('Agent', { subagent_type: 'design-critic', prompt: 'review' }), body);
     };
-    crit(verdictTxt('FAIL'));
+    if (!o.noCritic) crit(verdictTxt('FAIL'));
     if (!o.noFix) use('Edit', { file_path: path.join(T, 'sites/nuit/index.html'), old_string: 'v1', new_string: 'v2' });
     if (!o.noLook) { use('Read', { file_path: path.join(D, 'shots/phone.png') }); use('Read', { file_path: path.join(D, 'shots/desktop.png') }); }
-    if (!o.oneRound) crit(verdictTxt(o.lastFail ? 'FAIL' : 'PASS'));
+    if (!o.oneRound && !o.noCritic) crit(verdictTxt(o.lastFail ? 'FAIL' : 'PASS'));
     if (o.editAfter) use('Edit', { file_path: path.join(T, 'sites/nuit/index.html'), old_string: 'v2', new_string: 'v3' });
     const tp = path.join(os.tmpdir(), 'ais-design-transcript.jsonl'); fs.writeFileSync(tp, lines.join('\n') + '\n'); return tp;
   };
@@ -898,6 +898,8 @@ for (const c of ['git -C ~/my-ai-system pull --ff-only', 'git -C ~/my-ai-system 
   t('design gate: no local competitors listed as what to avoid -> refused', has({ noAvoid: true }, 'NOT to do'), true);
   t('design gate: critic round without the anchors line -> refused', (() => { const r = designGate(T, build({ badCritic: false, noAnchors: true })); return typeof r === 'string' && /ANCHORS/.test(r); })(), true);
   t('design gate: the critic failed but the owner approved the page ("Owner approved:" on the card) -> the critic is overridden', (() => { build({ lastFail: true }); const f = path.join(T, 'docs/TASK.md'); fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('Type: DESIGN', 'Type: DESIGN\nOwner approved: Shaun, 27 Nov, looked at it and said it is fine')); const r = designGate(T, path.join(os.tmpdir(), 'ais-design-transcript.jsonl')); return r === null; })(), true);
+  t('design gate: the critic is advisory by default: a FAIL verdict does not block the page', (() => { build({ lastFail: true }); const f = path.join(T, '.claude/system.json'); const cur = JSON.parse(fs.readFileSync(f, 'utf8')); const { designCriticBlocks, ...rest } = cur; fs.writeFileSync(f, JSON.stringify(rest) + '\n'); const r = designGate(T, path.join(os.tmpdir(), 'ais-design-transcript.jsonl')); fs.writeFileSync(f, JSON.stringify(cur) + '\n'); return r === null; })(), true);
+  t('design gate: advisory critic still requires that a critic round ran', (() => { build({}); const f = path.join(T, '.claude/system.json'); const cur = JSON.parse(fs.readFileSync(f, 'utf8')); const { designCriticBlocks, ...rest } = cur; fs.writeFileSync(f, JSON.stringify(rest) + '\n'); const tp2 = build({ noCritic: true }); const r = designGate(T, tp2) || ''; fs.writeFileSync(f, JSON.stringify(cur) + '\n'); return /Run the design-critic once/.test(r); })(), true);
   t('design gate: no phone-width render -> refused', has({ noPhone: true }, 'phone width'), true);
   t('design gate: too little real material -> stop on this business', has({ fewPhotos: true }, 'Not enough material'), true);
   const standIn = (o2) => { build({ fewPhotos: true, fewItems: true }); for (let n = 1; n <= 5; n++) fs.writeFileSync(path.join(T, `sites/nuit/s${n}.jpg`), 'x'); const pg = path.join(T, 'sites/nuit/index.html'); if (o2.label !== false) fs.appendFileSync(pg, '\n<span class="badge">Foto de ejemplo - aqui ira tu foto</span>\n'); fs.writeFileSync(path.join(D, 'CONTENT.md'), `Photos: sites/nuit/p1.jpg\nItems: 3\nDesigned assets: cat illustration\nPhoto verdict: ${o2.verdict || 'mixed'}\n${o2.reason === false ? '' : 'Verdict reason: looked at 14 Instagram photos, all blurry crumb close-ups with dim light, none shows the product\n'}Stand-in photos: ${[1, 2, 3, 4, 5].map((n) => `sites/nuit/s${n}.jpg`).join(', ')}\nStand-in items: 6\n${o2.noReplace ? '' : 'Replace later:\n- hero photo: send a sharp photo of the cat-shaped buns\n- phone number: not found, send the WhatsApp number\n'}`); return designGate(T, path.join(os.tmpdir(), 'ais-design-transcript.jsonl')) || ''; };

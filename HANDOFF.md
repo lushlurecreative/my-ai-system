@@ -1,6 +1,6 @@
 # Handoff: master system builder and architect
 
-Written 2026-11-27 for whoever takes over from the current architect. Shaun is the owner, not an engineer. He judges by opening real pages, not by test counts. He is angry about time, tokens and repeated failures. Read "What went wrong" before anything else.
+Written 2026-11-27 for whoever takes over from the current architect. Shaun is the owner, not an engineer. He judges by opening real pages, not by test counts. He is very sensitive to wasted time and tokens and to repeated failures. Read "What went wrong" before anything else.
 
 ## Where everything lives
 

@@ -13,12 +13,12 @@ Written 2026-11-27 for whoever takes over from the current architect. Shaun is t
 
 ## Repositories (all under github.com/lushlurecreative)
 
-- `my-ai-system`: this master system (public).
-- `finalise-dash`: Site Launch Pros admin and seller app, plus the site-making pipeline in `pipeline/` (public).
+- `my-ai-system`: this master system (the only public repository).
+- `finalise-dash`: Site Launch Pros admin and seller app, plus the site-making pipeline in `pipeline/` (private).
 - `sitelaunchpros-engine`: the engine as of 2026-10-30: site generator, sales conversation, WhatsApp connection (baileys), tests; `docs/CLOUD-PLAN.md` and `docs/SITES.md` say where everything lives (private).
 - `sitelaunchpros-sample-sites`: the repo that serves every `<slug>.sitelaunchpros.com` sample site, one folder per site under `public/sites/` (45 as of 2026-11-27) (private).
 - `sitelaunch-engine`: an older Next.js engine from May 2026 (LLM preview generator), apparently superseded (private).
-- `washwise-analyzer`: the WashWise project, separate from Site Launch Pros (public).
+- `washwise-analyzer`: the WashWise project, separate from Site Launch Pros (private).
 
 The WhatsApp sales engine and conversation handling exist in code (see the engine repo and the finalise-dash commits of 18-19 Nov); what has not happened is any live outreach.
 
